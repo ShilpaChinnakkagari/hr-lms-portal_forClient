@@ -1,9 +1,12 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { auth, db } from '../../firebase/config';
+import { auth, db, storage } from '../../firebase/config';
 import { signOut } from 'firebase/auth';
 import { collection, addDoc } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
 
 function SalaryUpload() {
   const navigate = useNavigate();
@@ -30,91 +33,116 @@ function SalaryUpload() {
     reader.readAsArrayBuffer(file);
   };
 
+  const generatePDF = async (employeeData) => {
+    return new Promise((resolve) => {
+      const doc = new jsPDF();
+      
+      // Company Header
+      doc.setFontSize(20);
+      doc.setTextColor(0, 51, 102);
+      doc.text("HR LMS PORTAL", 105, 20, { align: 'center' });
+      
+      doc.setFontSize(16);
+      doc.setTextColor(0, 0, 0);
+      doc.text("SALARY SLIP", 105, 30, { align: 'center' });
+      
+      doc.setFontSize(12);
+      doc.text(`Month: ${month}`, 20, 45);
+      
+      // Employee Details
+      doc.setFontSize(11);
+      doc.text(`Employee Name: ${employeeData.employeeName}`, 20, 60);
+      doc.text(`Employee ID: ${employeeData.employeeId}`, 20, 68);
+      doc.text(`Email: ${employeeData.employeeEmail}`, 20, 76);
+      
+      // Calculate totals
+      const totalEarnings = employeeData.basic + employeeData.hra + employeeData.da + 
+                           employeeData.conveyance + employeeData.medical + employeeData.bonus;
+      const totalDeductions = employeeData.pf + employeeData.professionalTax + employeeData.incomeTax;
+      const netSalary = totalEarnings - totalDeductions;
+      
+      // Salary Table
+      doc.autoTable({
+        startY: 90,
+        head: [['Earnings', 'Amount (₹)', 'Deductions', 'Amount (₹)']],
+        body: [
+          ['Basic', employeeData.basic, 'PF', employeeData.pf],
+          ['HRA', employeeData.hra, 'Professional Tax', employeeData.professionalTax],
+          ['DA', employeeData.da, 'Income Tax', employeeData.incomeTax],
+          ['Conveyance', employeeData.conveyance, '', ''],
+          ['Medical', employeeData.medical, '', ''],
+          ['Bonus', employeeData.bonus, '', ''],
+          ['', '', '', ''],
+          ['Total Earnings', totalEarnings, 'Total Deductions', totalDeductions]
+        ],
+        foot: [['NET SALARY', `₹${netSalary}`, '', '']],
+        theme: 'striped',
+        headStyles: { fillColor: [41, 128, 185] },
+        footStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' }
+      });
+      
+      // Footer
+      doc.setFontSize(10);
+      doc.text(`Generated on: ${new Date().toLocaleDateString()}`, 20, doc.lastAutoTable.finalY + 20);
+      doc.text("This is a system generated salary slip.", 20, doc.lastAutoTable.finalY + 28);
+      
+      const pdfBlob = doc.output('blob');
+      resolve(pdfBlob);
+    });
+  };
+
+  const uploadToStorage = async (pdfBlob, employeeEmail, month) => {
+    const fileName = `salary_${employeeEmail}_${month.replace(/ /g, '_')}.pdf`;
+    const storageRef = ref(storage, `salary-slips/${fileName}`);
+    await uploadBytes(storageRef, pdfBlob);
+    const downloadURL = await getDownloadURL(storageRef);
+    return downloadURL;
+  };
+
   const handleGenerateAll = async () => {
     setGenerating(true);
     
     try {
-      // Create a new workbook
-      const wb = XLSX.utils.book_new();
-      
-      // Prepare data for Excel
-      const salaryData = excelData.map(emp => {
-        const basic = Number(emp.basic || emp.Basic || 0);
-        const hra = Number(emp.hra || emp.HRA || 0);
-        const da = Number(emp.da || emp.DA || 0);
-        const conveyance = Number(emp.conveyance || emp.Conveyance || 0);
-        const medical = Number(emp.medical || emp.Medical || 0);
-        const bonus = Number(emp.bonus || emp.Bonus || 0);
-        const pf = Number(emp.pf || emp.PF || 0);
-        const professionalTax = Number(emp.professionalTax || emp.ProfessionalTax || 0);
-        const incomeTax = Number(emp.incomeTax || emp.IncomeTax || 0);
+      for (const emp of excelData) {
+        const employeeData = {
+          employeeId: emp.employeeId || emp.EmployeeID || `EMP${Math.floor(Math.random()*1000)}`,
+          employeeName: emp.employeeName || emp.Name || '',
+          employeeEmail: emp.employeeEmail || emp.Email || '',
+          basic: Number(emp.basic || emp.Basic || 0),
+          hra: Number(emp.hra || emp.HRA || 0),
+          da: Number(emp.da || emp.DA || 0),
+          conveyance: Number(emp.conveyance || emp.Conveyance || 0),
+          medical: Number(emp.medical || emp.Medical || 0),
+          bonus: Number(emp.bonus || emp.Bonus || 0),
+          pf: Number(emp.pf || emp.PF || 0),
+          professionalTax: Number(emp.professionalTax || emp.ProfessionalTax || 0),
+          incomeTax: Number(emp.incomeTax || emp.IncomeTax || 0)
+        };
         
-        const totalEarnings = basic + hra + da + conveyance + medical + bonus;
-        const totalDeductions = pf + professionalTax + incomeTax;
+        const totalEarnings = employeeData.basic + employeeData.hra + employeeData.da + 
+                             employeeData.conveyance + employeeData.medical + employeeData.bonus;
+        const totalDeductions = employeeData.pf + employeeData.professionalTax + employeeData.incomeTax;
         const netSalary = totalEarnings - totalDeductions;
         
-        return {
-          'Employee ID': emp.employeeId || emp.EmployeeID || '',
-          'Employee Name': emp.employeeName || emp.Name || '',
-          'Employee Email': emp.employeeEmail || emp.Email || '',
-          'Month': month,
-          'Basic Salary': basic,
-          'HRA': hra,
-          'DA': da,
-          'Conveyance': conveyance,
-          'Medical': medical,
-          'Bonus': bonus,
-          'PF': pf,
-          'Professional Tax': professionalTax,
-          'Income Tax': incomeTax,
-          'Net Salary': netSalary
-        };
-      });
-      
-      // Create worksheet
-      const ws = XLSX.utils.json_to_sheet(salaryData);
-      XLSX.utils.book_append_sheet(wb, ws, "Salary Slips");
-      
-      // Generate Excel file (fast!)
-      XLSX.writeFile(wb, `salary_slips_${month.replace(/ /g, '_')}.xlsx`);
-      
-      // Save to Firestore (optional - remove if you don't need history)
-      for (const emp of excelData) {
-        const basic = Number(emp.basic || emp.Basic || 0);
-        const hra = Number(emp.hra || emp.HRA || 0);
-        const da = Number(emp.da || emp.DA || 0);
-        const conveyance = Number(emp.conveyance || emp.Conveyance || 0);
-        const medical = Number(emp.medical || emp.Medical || 0);
-        const bonus = Number(emp.bonus || emp.Bonus || 0);
-        const pf = Number(emp.pf || emp.PF || 0);
-        const professionalTax = Number(emp.professionalTax || emp.ProfessionalTax || 0);
-        const incomeTax = Number(emp.incomeTax || emp.IncomeTax || 0);
+        // Generate PDF
+        const pdfBlob = await generatePDF(employeeData);
         
-        const totalEarnings = basic + hra + da + conveyance + medical + bonus;
-        const totalDeductions = pf + professionalTax + incomeTax;
+        // Upload to Storage
+        const pdfUrl = await uploadToStorage(pdfBlob, employeeData.employeeEmail, month);
         
+        // Save to Firestore
         await addDoc(collection(db, "salarySlips"), {
-          employeeId: emp.employeeId || emp.EmployeeID || '',
-          employeeEmail: emp.employeeEmail || emp.Email || '',
-          employeeName: emp.employeeName || emp.Name || '',
+          ...employeeData,
           month: month,
           year: new Date().getFullYear(),
-          basic: basic,
-          hra: hra,
-          da: da,
-          conveyance: conveyance,
-          medical: medical,
-          bonus: bonus,
-          pf: pf,
-          professionalTax: professionalTax,
-          incomeTax: incomeTax,
-          netSalary: totalEarnings - totalDeductions,
+          netSalary: netSalary,
+          pdfUrl: pdfUrl,
           generatedOn: new Date(),
           generatedBy: auth.currentUser?.email
         });
       }
       
-      alert(`Successfully generated Excel file with ${excelData.length} salary slips!`);
+      alert(`Successfully generated ${excelData.length} salary slips!`);
       setPreview(false);
       setExcelData([]);
       
@@ -169,14 +197,23 @@ function SalaryUpload() {
           <div style={styles.menuItem} onClick={() => handleNavigation('/hr/employees')}>Employees</div>
           <div style={styles.menuItem} onClick={() => handleNavigation('/hr/leave-management')}>Leave Management</div>
           <div style={{...styles.menuItem, ...styles.activeMenuItem}}>Salary Upload</div>
+          <div style={styles.menuItem} onClick={() => handleNavigation('/hr/salary-reports')}>Salary Reports</div>
         </div>
         <button onClick={handleLogout} style={styles.logout}>Logout</button>
       </div>
 
       {/* Main Content */}
       <div style={styles.content}>
-        <h1 style={styles.pageTitle}>Salary Management</h1>
-        <p style={styles.pageSubtitle}>Upload Excel and generate salary slips for all employees</p>
+        <div style={styles.header}>
+          <h1 style={styles.pageTitle}>Salary Management</h1>
+          <button 
+            onClick={() => handleNavigation('/hr/salary-reports')} 
+            style={styles.reportsButton}
+          >
+            📊 View Salary Reports
+          </button>
+        </div>
+        <p style={styles.pageSubtitle}>Upload Excel and generate PDF salary slips for all employees</p>
 
         {/* Month Selection */}
         <div style={styles.monthSection}>
@@ -280,7 +317,7 @@ function SalaryUpload() {
                 style={styles.generateButton}
                 disabled={generating}
               >
-                {generating ? 'Generating...' : 'Generate Excel File'}
+                {generating ? 'Generating PDFs...' : 'Generate PDF Salary Slips'}
               </button>
             </div>
           </div>
@@ -290,7 +327,7 @@ function SalaryUpload() {
           <div style={styles.loadingOverlay}>
             <div style={styles.loadingBox}>
               <div style={styles.spinner}></div>
-              <p>Generating Excel file... Please wait.</p>
+              <p>Generating PDF salary slips... Please wait.</p>
             </div>
           </div>
         )}
@@ -349,15 +386,31 @@ const styles = {
     padding: "32px",
     overflowY: "auto"
   },
+  header: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: "8px"
+  },
   pageTitle: {
     fontSize: "28px",
     fontWeight: "600",
-    margin: "0 0 8px 0"
+    margin: 0
+  },
+  reportsButton: {
+    padding: "10px 20px",
+    backgroundColor: "#8b5cf6",
+    color: "white",
+    border: "none",
+    borderRadius: "6px",
+    cursor: "pointer",
+    fontSize: "14px",
+    marginLeft: "auto"
   },
   pageSubtitle: {
     fontSize: "16px",
     color: "#6b7280",
-    margin: "0 0 32px 0"
+    margin: "0 0 24px 0"
   },
   monthSection: {
     backgroundColor: "white",

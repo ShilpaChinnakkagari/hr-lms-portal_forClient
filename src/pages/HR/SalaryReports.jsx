@@ -40,6 +40,19 @@ function SalaryReports() {
     navigate(path);
   };
 
+  const viewPDF = (pdfUrl) => {
+    window.open(pdfUrl, '_blank');
+  };
+
+  const downloadPDF = (pdfUrl, fileName) => {
+    const link = document.createElement('a');
+    link.href = pdfUrl;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const exportToExcel = () => {
     const exportData = salarySlips.map(slip => ({
       'Employee ID': slip.employeeId,
@@ -106,11 +119,16 @@ function SalaryReports() {
       <div style={styles.content}>
         <div style={styles.header}>
           <h1 style={styles.pageTitle}>Salary Reports</h1>
-          <button onClick={exportToExcel} style={styles.exportButton}>
-            📥 Export to Excel
-          </button>
+          <div style={styles.headerButtons}>
+            <button onClick={() => handleNavigation('/hr/salary-upload')} style={styles.uploadButton}>
+              📤 Go to Upload
+            </button>
+            <button onClick={exportToExcel} style={styles.exportButton}>
+              📥 Export to Excel
+            </button>
+          </div>
         </div>
-        <p style={styles.pageSubtitle}>View all generated salary slips</p>
+        <p style={styles.pageSubtitle}>View and download PDF salary slips</p>
 
         {/* Filters */}
         <div style={styles.filters}>
@@ -173,6 +191,7 @@ function SalaryReports() {
                 <th style={styles.tableHeader}>Prof Tax</th>
                 <th style={styles.tableHeader}>Income Tax</th>
                 <th style={styles.tableHeader}>Net Salary</th>
+                <th style={styles.tableHeader}>PDF</th>
                 <th style={styles.tableHeader}>Generated On</th>
               </tr>
             </thead>
@@ -195,6 +214,26 @@ function SalaryReports() {
                   <td style={styles.tableCell}>₹{slip.incomeTax?.toLocaleString()}</td>
                   <td style={{...styles.tableCell, fontWeight: "bold", color: "#059669"}}>
                     ₹{slip.netSalary?.toLocaleString()}
+                  </td>
+                  <td style={styles.tableCell}>
+                    {slip.pdfUrl && (
+                      <div style={styles.pdfButtons}>
+                        <button 
+                          onClick={() => viewPDF(slip.pdfUrl)}
+                          style={styles.viewPdfButton}
+                          title="View PDF"
+                        >
+                          👁️
+                        </button>
+                        <button 
+                          onClick={() => downloadPDF(slip.pdfUrl, `Salary_${slip.employeeName}_${slip.month}.pdf`)}
+                          style={styles.downloadPdfButton}
+                          title="Download PDF"
+                        >
+                          ⬇️
+                        </button>
+                      </div>
+                    )}
                   </td>
                   <td style={styles.tableCell}>{formatDate(slip.generatedOn)}</td>
                 </tr>
@@ -275,10 +314,18 @@ const styles = {
     fontWeight: "600",
     margin: 0
   },
-  pageSubtitle: {
-    fontSize: "16px",
-    color: "#6b7280",
-    margin: "0 0 24px 0"
+  headerButtons: {
+    display: "flex",
+    gap: "10px"
+  },
+  uploadButton: {
+    padding: "10px 20px",
+    backgroundColor: "#8b5cf6",
+    color: "white",
+    border: "none",
+    borderRadius: "6px",
+    cursor: "pointer",
+    fontSize: "14px"
   },
   exportButton: {
     padding: "10px 20px",
@@ -288,6 +335,11 @@ const styles = {
     borderRadius: "6px",
     cursor: "pointer",
     fontSize: "14px"
+  },
+  pageSubtitle: {
+    fontSize: "16px",
+    color: "#6b7280",
+    margin: "0 0 24px 0"
   },
   filters: {
     display: "flex",
@@ -349,7 +401,7 @@ const styles = {
   table: {
     width: "100%",
     borderCollapse: "collapse",
-    minWidth: "1400px"
+    minWidth: "1600px"
   },
   tableHeader: {
     textAlign: "left",
@@ -372,6 +424,26 @@ const styles = {
   employeeEmail: {
     fontSize: "11px",
     color: "#6b7280"
+  },
+  pdfButtons: {
+    display: "flex",
+    gap: "8px"
+  },
+  viewPdfButton: {
+    padding: "4px 8px",
+    backgroundColor: "#f3f4f6",
+    border: "none",
+    borderRadius: "4px",
+    cursor: "pointer",
+    fontSize: "16px"
+  },
+  downloadPdfButton: {
+    padding: "4px 8px",
+    backgroundColor: "#e0f2fe",
+    border: "none",
+    borderRadius: "4px",
+    cursor: "pointer",
+    fontSize: "16px"
   }
 };
 
