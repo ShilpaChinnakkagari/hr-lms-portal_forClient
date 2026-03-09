@@ -6,13 +6,14 @@ import { collection, addDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+import autoTable from 'jspdf-autotable';
 
 function SalaryUpload() {
   const navigate = useNavigate();
   const [excelData, setExcelData] = useState([]);
   const [preview, setPreview] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [progress, setProgress] = useState(0);
   const [month, setMonth] = useState(new Date().toLocaleString('default', { month: 'long', year: 'numeric' }));
 
   const handleFileUpload = (e) => {
@@ -28,12 +29,13 @@ function SalaryUpload() {
       
       setExcelData(jsonData);
       setPreview(true);
+      setProgress(0);
     };
     
     reader.readAsArrayBuffer(file);
   };
 
-  const generatePDF = async (employeeData) => {
+  const generatePDF = (employeeData) => {
     return new Promise((resolve) => {
       const doc = new jsPDF();
       
@@ -62,7 +64,7 @@ function SalaryUpload() {
       const netSalary = totalEarnings - totalDeductions;
       
       // Salary Table
-      doc.autoTable({
+      autoTable(doc, {
         startY: 90,
         head: [['Earnings', 'Amount (₹)', 'Deductions', 'Amount (₹)']],
         body: [
@@ -99,56 +101,74 @@ function SalaryUpload() {
     return downloadURL;
   };
 
+  const processEmployee = async (emp) => {
+    const employeeData = {
+      employeeId: emp.employeeId || emp.EmployeeID || `EMP${Math.floor(Math.random()*1000)}`,
+      employeeName: emp.employeeName || emp.Name || 'Unknown',
+      employeeEmail: emp.employeeEmail || emp.Email || 'unknown@email.com',
+      basic: Number(emp.basic || emp.Basic || 0),
+      hra: Number(emp.hra || emp.HRA || 0),
+      da: Number(emp.da || emp.DA || 0),
+      conveyance: Number(emp.conveyance || emp.Conveyance || 0),
+      medical: Number(emp.medical || emp.Medical || 0),
+      bonus: Number(emp.bonus || emp.Bonus || 0),
+      pf: Number(emp.pf || emp.PF || 0),
+      professionalTax: Number(emp.professionalTax || emp.ProfessionalTax || 0),
+      incomeTax: Number(emp.incomeTax || emp.IncomeTax || 0)
+    };
+    
+    const totalEarnings = employeeData.basic + employeeData.hra + employeeData.da + 
+                         employeeData.conveyance + employeeData.medical + employeeData.bonus;
+    const totalDeductions = employeeData.pf + employeeData.professionalTax + employeeData.incomeTax;
+    const netSalary = totalEarnings - totalDeductions;
+    
+    // Generate PDF
+    const pdfBlob = await generatePDF(employeeData);
+    
+    // Upload to Storage
+    const pdfUrl = await uploadToStorage(pdfBlob, employeeData.employeeEmail, month);
+    
+    // Save to Firestore
+    await addDoc(collection(db, "salarySlips"), {
+      ...employeeData,
+      month: month,
+      year: new Date().getFullYear(),
+      netSalary: netSalary,
+      pdfUrl: pdfUrl,
+      generatedOn: new Date(),
+      generatedBy: auth.currentUser?.email
+    });
+    
+    return true;
+  };
+
   const handleGenerateAll = async () => {
     setGenerating(true);
+    setProgress(0);
     
     try {
-      for (const emp of excelData) {
-        const employeeData = {
-          employeeId: emp.employeeId || emp.EmployeeID || `EMP${Math.floor(Math.random()*1000)}`,
-          employeeName: emp.employeeName || emp.Name || '',
-          employeeEmail: emp.employeeEmail || emp.Email || '',
-          basic: Number(emp.basic || emp.Basic || 0),
-          hra: Number(emp.hra || emp.HRA || 0),
-          da: Number(emp.da || emp.DA || 0),
-          conveyance: Number(emp.conveyance || emp.Conveyance || 0),
-          medical: Number(emp.medical || emp.Medical || 0),
-          bonus: Number(emp.bonus || emp.Bonus || 0),
-          pf: Number(emp.pf || emp.PF || 0),
-          professionalTax: Number(emp.professionalTax || emp.ProfessionalTax || 0),
-          incomeTax: Number(emp.incomeTax || emp.IncomeTax || 0)
-        };
+      const total = excelData.length;
+      const batchSize = 3; // Process 3 at a time
+      let completed = 0;
+      
+      for (let i = 0; i < total; i += batchSize) {
+        const batch = excelData.slice(i, i + batchSize);
         
-        const totalEarnings = employeeData.basic + employeeData.hra + employeeData.da + 
-                             employeeData.conveyance + employeeData.medical + employeeData.bonus;
-        const totalDeductions = employeeData.pf + employeeData.professionalTax + employeeData.incomeTax;
-        const netSalary = totalEarnings - totalDeductions;
+        // Process batch in parallel
+        await Promise.all(batch.map(emp => processEmployee(emp)));
         
-        // Generate PDF
-        const pdfBlob = await generatePDF(employeeData);
-        
-        // Upload to Storage
-        const pdfUrl = await uploadToStorage(pdfBlob, employeeData.employeeEmail, month);
-        
-        // Save to Firestore
-        await addDoc(collection(db, "salarySlips"), {
-          ...employeeData,
-          month: month,
-          year: new Date().getFullYear(),
-          netSalary: netSalary,
-          pdfUrl: pdfUrl,
-          generatedOn: new Date(),
-          generatedBy: auth.currentUser?.email
-        });
+        completed += batch.length;
+        setProgress(Math.round((completed / total) * 100));
       }
       
-      alert(`Successfully generated ${excelData.length} salary slips!`);
+      alert(`✅ Successfully generated ${total} salary slips in ${Math.round(total/3)} batches!`);
       setPreview(false);
       setExcelData([]);
+      setProgress(0);
       
     } catch (error) {
-      console.error("Error:", error);
-      alert("Failed to generate salary slips. Check console.");
+      console.error("Error details:", error);
+      alert("❌ Failed to generate salary slips. Check console for details.");
     } finally {
       setGenerating(false);
     }
@@ -317,7 +337,7 @@ function SalaryUpload() {
                 style={styles.generateButton}
                 disabled={generating}
               >
-                {generating ? 'Generating PDFs...' : 'Generate PDF Salary Slips'}
+                {generating ? `Generating... ${progress}%` : '🚀 Generate PDF Salary Slips'}
               </button>
             </div>
           </div>
@@ -327,7 +347,11 @@ function SalaryUpload() {
           <div style={styles.loadingOverlay}>
             <div style={styles.loadingBox}>
               <div style={styles.spinner}></div>
-              <p>Generating PDF salary slips... Please wait.</p>
+              <p>Generating PDF salary slips... {progress}%</p>
+              <div style={styles.progressBar}>
+                <div style={{...styles.progressFill, width: `${progress}%`}}></div>
+              </div>
+              <p>Processing {excelData.length} employees in parallel batches</p>
             </div>
           </div>
         )}
@@ -531,7 +555,21 @@ const styles = {
     backgroundColor: "white",
     padding: "32px",
     borderRadius: "12px",
-    textAlign: "center"
+    textAlign: "center",
+    minWidth: "300px"
+  },
+  progressBar: {
+    width: "100%",
+    height: "10px",
+    backgroundColor: "#f3f4f6",
+    borderRadius: "5px",
+    marginTop: "10px",
+    overflow: "hidden"
+  },
+  progressFill: {
+    height: "100%",
+    backgroundColor: "#3b82f6",
+    transition: "width 0.3s ease"
   },
   spinner: {
     border: "4px solid #f3f4f6",
