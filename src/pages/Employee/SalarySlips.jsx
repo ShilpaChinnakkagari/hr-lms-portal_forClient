@@ -2,9 +2,9 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { auth, db } from '../../firebase/config';
 import { signOut } from 'firebase/auth';
-import { collection, query, where, getDocs } from 'firebase/firestore'; // Removed orderBy
+import { collection, query, where, getDocs } from 'firebase/firestore';
 import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+import autoTable from 'jspdf-autotable';
 
 function SalarySlips() {
   const navigate = useNavigate();
@@ -12,12 +12,6 @@ function SalarySlips() {
   const [salarySlips, setSalarySlips] = useState([]);
   const [loading, setLoading] = useState(true);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [debug, setDebug] = useState({
-    userEmail: '',
-    slipsFound: 0,
-    allSlips: [],
-    error: null
-  });
 
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(async (currentUser) => {
@@ -33,24 +27,10 @@ function SalarySlips() {
 
   const fetchSalarySlips = async (currentUser) => {
     try {
-      // Get ALL salary slips first
-      const allSlipsRef = collection(db, "salarySlips");
-      const allSlipsSnap = await getDocs(allSlipsRef);
-      
-      const allSlips = [];
-      allSlipsSnap.forEach(doc => {
-        allSlips.push({
-          id: doc.id,
-          ...doc.data()
-        });
-      });
-
-      // Query for specific user - WITHOUT orderBy
       const slipsRef = collection(db, "salarySlips");
       const slipsQuery = query(
         slipsRef,
         where("employeeEmail", "==", currentUser.email)
-        // orderBy removed - will work immediately
       );
       
       const slipsSnap = await getDocs(slipsQuery);
@@ -60,21 +40,10 @@ function SalarySlips() {
         ...doc.data()
       }));
       
-      setDebug({
-        userEmail: currentUser.email,
-        slipsFound: slipsSnap.size,
-        allSlips: allSlips,
-        error: null
-      });
-      
       setSalarySlips(slips);
       setLoading(false);
     } catch (error) {
       console.error("Error fetching salary slips:", error);
-      setDebug(prev => ({
-        ...prev,
-        error: error.message
-      }));
       setLoading(false);
     }
   };
@@ -87,6 +56,7 @@ function SalarySlips() {
   const downloadPDF = (slip) => {
     const doc = new jsPDF();
     
+    // Company Header
     doc.setFontSize(20);
     doc.setTextColor(0, 51, 102);
     doc.text("HR LMS PORTAL", 105, 20, { align: 'center' });
@@ -97,6 +67,7 @@ function SalarySlips() {
     doc.setFontSize(12);
     doc.text(`Month: ${slip.month}`, 20, 45);
     
+    // Employee Details
     doc.setFontSize(11);
     doc.text(`Employee Name: ${slip.employeeName}`, 20, 60);
     doc.text(`Employee ID: ${slip.employeeId}`, 20, 68);
@@ -106,7 +77,8 @@ function SalarySlips() {
                       (slip.medical || 0) + (slip.bonus || 0);
     const deductions = (slip.pf || 0) + (slip.professionalTax || 0) + (slip.incomeTax || 0);
     
-    doc.autoTable({
+    // Salary Table
+    autoTable(doc, {
       startY: 100,
       head: [['Earnings', 'Amount (₹)', 'Deductions', 'Amount (₹)']],
       body: [
@@ -121,8 +93,14 @@ function SalarySlips() {
       ],
       foot: [['NET SALARY', `₹${slip.netSalary || 0}`, '', '']],
       theme: 'striped',
-      headStyles: { fillColor: [41, 128, 185] }
+      headStyles: { fillColor: [41, 128, 185] },
+      footStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' }
     });
+    
+    // Footer
+    doc.setFontSize(10);
+    doc.text(`Generated on: ${new Date().toLocaleDateString()}`, 20, doc.lastAutoTable.finalY + 20);
+    doc.text("This is a computer generated salary slip.", 20, doc.lastAutoTable.finalY + 28);
     
     doc.save(`Salary_${slip.employeeName}_${slip.month}.pdf`);
   };
@@ -274,27 +252,28 @@ function SalarySlips() {
       justifyContent: "center",
       fontWeight: "600"
     },
-    debugPanel: {
-      backgroundColor: "#f3f4f6",
-      padding: "16px",
-      borderRadius: "8px",
-      marginBottom: "20px",
-      fontSize: "14px",
-      border: "2px solid #3b82f6"
+    statsContainer: {
+      display: "grid",
+      gridTemplateColumns: "repeat(3, 1fr)",
+      gap: "20px",
+      marginBottom: "32px"
     },
-    debugTitle: {
-      fontSize: "16px",
+    statCard: {
+      backgroundColor: "white",
+      padding: "20px",
+      borderRadius: "12px",
+      boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+      textAlign: "center"
+    },
+    statValue: {
+      fontSize: "28px",
       fontWeight: "600",
-      marginBottom: "10px",
-      color: "#111827"
+      color: "#059669"
     },
-    debugText: {
-      margin: "5px 0",
-      color: "#4b5563"
-    },
-    debugHighlight: {
-      color: "#059669",
-      fontWeight: "600"
+    statLabel: {
+      fontSize: "14px",
+      color: "#6b7280",
+      marginTop: "5px"
     },
     slipsContainer: {
       backgroundColor: "white",
@@ -348,6 +327,7 @@ function SalarySlips() {
   };
 
   const totalEarnings = salarySlips.reduce((sum, slip) => sum + (slip.netSalary || 0), 0);
+  const averageSalary = salarySlips.length > 0 ? totalEarnings / salarySlips.length : 0;
 
   return (
     <div style={styles.container}>
@@ -373,7 +353,7 @@ function SalarySlips() {
         <div style={styles.header}>
           <div>
             <h1 style={styles.welcome}>My Salary History</h1>
-            <p style={styles.subtitle}>Debug information shown below</p>
+            <p style={styles.subtitle}>View and download your salary slips</p>
           </div>
           <div style={styles.userInfo}>
             <span style={styles.userEmail}>{user?.email}</span>
@@ -381,41 +361,29 @@ function SalarySlips() {
           </div>
         </div>
 
-        {/* Debug Panel */}
-        <div style={styles.debugPanel}>
-          <div style={styles.debugTitle}>🔍 Debug Information</div>
-          <div style={styles.debugText}>Your Email: <span style={styles.debugHighlight}>{debug.userEmail}</span></div>
-          <div style={styles.debugText}>Slips Found for You: <span style={styles.debugHighlight}>{debug.slipsFound}</span></div>
-          <div style={styles.debugText}>Total Slips in Database: <span style={styles.debugHighlight}>{debug.allSlips.length}</span></div>
-          
-          {debug.allSlips.length > 0 && (
-            <div style={{marginTop: "10px"}}>
-              <div style={styles.debugText}><strong>All emails in database:</strong></div>
-              {debug.allSlips.map((slip, index) => (
-                <div key={index} style={{...styles.debugText, marginLeft: "10px", fontSize: "12px"}}>
-                  • {slip.employeeEmail} - {slip.employeeName} ({slip.month})
-                </div>
-              ))}
+        {/* Stats Cards */}
+        {salarySlips.length > 0 && (
+          <div style={styles.statsContainer}>
+            <div style={styles.statCard}>
+              <div style={styles.statValue}>{salarySlips.length}</div>
+              <div style={styles.statLabel}>Total Slips</div>
             </div>
-          )}
-          
-          {debug.error && (
-            <div style={{...styles.debugText, color: "#dc2626"}}>
-              Error: {debug.error}
+            <div style={styles.statCard}>
+              <div style={styles.statValue}>₹{totalEarnings.toLocaleString()}</div>
+              <div style={styles.statLabel}>Total Credited</div>
             </div>
-          )}
-        </div>
+            <div style={styles.statCard}>
+              <div style={styles.statValue}>₹{Math.round(averageSalary).toLocaleString()}</div>
+              <div style={styles.statLabel}>Average Salary</div>
+            </div>
+          </div>
+        )}
 
         {/* Salary Slips Table */}
         <div style={styles.slipsContainer}>
           {salarySlips.length === 0 ? (
             <div style={styles.emptyState}>
               <p>No salary data added by HR yet</p>
-              {debug.allSlips.length > 0 && (
-                <p style={{fontSize: '12px', marginTop: '10px'}}>
-                  But database has {debug.allSlips.length} total slips for other employees
-                </p>
-              )}
             </div>
           ) : (
             <table style={styles.table}>
@@ -423,23 +391,42 @@ function SalarySlips() {
                 <tr>
                   <th style={styles.tableHeader}>Month</th>
                   <th style={styles.tableHeader}>Basic</th>
+                  <th style={styles.tableHeader}>Allowances</th>
+                  <th style={styles.tableHeader}>Deductions</th>
                   <th style={styles.tableHeader}>Net Salary</th>
                   <th style={styles.tableHeader}>Added On</th>
                   <th style={styles.tableHeader}>Download</th>
                 </tr>
               </thead>
               <tbody>
-                {salarySlips.map((slip) => (
-                  <tr key={slip.id} style={styles.tableRow}>
-                    <td style={styles.tableCell}>{slip.month}</td>
-                    <td style={styles.tableCell}>₹{slip.basic?.toLocaleString()}</td>
-                    <td style={{...styles.tableCell, ...styles.amountCell}}>₹{slip.netSalary?.toLocaleString()}</td>
-                    <td style={styles.tableCell}>{formatDate(slip.generatedOn)}</td>
-                    <td style={styles.tableCell}>
-                      <button onClick={() => downloadPDF(slip)} style={styles.downloadButton}>Download</button>
-                    </td>
-                  </tr>
-                ))}
+                {salarySlips.map((slip) => {
+                  const allowances = (slip.hra || 0) + (slip.da || 0) + 
+                                   (slip.conveyance || 0) + (slip.medical || 0) + 
+                                   (slip.bonus || 0);
+                  const deductions = (slip.pf || 0) + (slip.professionalTax || 0) + 
+                                    (slip.incomeTax || 0);
+                  
+                  return (
+                    <tr key={slip.id} style={styles.tableRow}>
+                      <td style={{...styles.tableCell, ...styles.monthCell}}>{slip.month}</td>
+                      <td style={styles.tableCell}>₹{slip.basic?.toLocaleString()}</td>
+                      <td style={styles.tableCell}>₹{allowances.toLocaleString()}</td>
+                      <td style={styles.tableCell}>₹{deductions.toLocaleString()}</td>
+                      <td style={{...styles.tableCell, ...styles.amountCell}}>
+                        ₹{slip.netSalary?.toLocaleString()}
+                      </td>
+                      <td style={styles.tableCell}>{formatDate(slip.generatedOn)}</td>
+                      <td style={styles.tableCell}>
+                        <button 
+                          onClick={() => downloadPDF(slip)}
+                          style={styles.downloadButton}
+                        >
+                          Download
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}
