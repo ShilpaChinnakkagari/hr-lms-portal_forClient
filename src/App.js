@@ -1,24 +1,65 @@
-import logo from './logo.svg';
-import './App.css';
+import React, { useEffect, useState } from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { auth } from './firebase/config';
+import { onAuthStateChanged } from 'firebase/auth';
+import Login from './pages/Login';
+import HRDashboard from './pages/HR/Dashboard';
+import Employees from './pages/HR/Employees';
+import LeaveManagement from './pages/HR/LeaveManagement';
+import EmployeeDashboard from './pages/Employee/Dashboard';
+import ApplyLeave from './pages/Employee/ApplyLeave';
+
+const HR_EMAIL = "shilpa.btech.aws@gmail.com";
 
 function App() {
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      setUser(firebaseUser);
+      setLoading(false);
+    });
+    return unsubscribe;
+  }, []);
+
+  if (loading) {
+    return (
+      <div style={{ 
+        height: "100vh", 
+        display: "flex", 
+        justifyContent: "center", 
+        alignItems: "center",
+        backgroundColor: "#f3f4f6"
+      }}>
+        Loading...
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <BrowserRouter>
+        <Routes>
+          <Route path="*" element={<Login />} />
+        </Routes>
+      </BrowserRouter>
+    );
+  }
+
+  const isHR = user.email === HR_EMAIL;
+
   return (
-    <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.js</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
-    </div>
+    <BrowserRouter>
+      <Routes>
+        <Route path="/hr/dashboard" element={isHR ? <HRDashboard /> : <Navigate to="/employee/dashboard" />} />
+        <Route path="/hr/employees" element={isHR ? <Employees /> : <Navigate to="/employee/dashboard" />} />
+        <Route path="/hr/leave-management" element={isHR ? <LeaveManagement /> : <Navigate to="/employee/dashboard" />} />
+        <Route path="/employee/dashboard" element={!isHR ? <EmployeeDashboard /> : <Navigate to="/hr/dashboard" />} />
+        <Route path="/employee/apply-leave" element={!isHR ? <ApplyLeave /> : <Navigate to="/hr/dashboard" />} />
+        <Route path="/" element={<Navigate to={isHR ? "/hr/dashboard" : "/employee/dashboard"} />} />
+      </Routes>
+    </BrowserRouter>
   );
 }
 
