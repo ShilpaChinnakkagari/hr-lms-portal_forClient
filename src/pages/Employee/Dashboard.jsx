@@ -27,6 +27,7 @@ function EmployeeDashboard() {
 
   const fetchEmployeeData = async (currentUser) => {
     try {
+      // Get employee's leave limits
       const usersRef = collection(db, "users");
       const userQuery = query(usersRef, where("email", "==", currentUser.email));
       const userSnap = await getDocs(userQuery);
@@ -51,11 +52,11 @@ function EmployeeDashboard() {
       }
       setLeaveLimits(limits);
 
+      // Fetch ALL leave requests for this employee
       const leavesRef = collection(db, "leaves");
       const leavesQuery = query(
         leavesRef,
-        where("employeeId", "==", currentUser.uid),
-        orderBy("appliedOn", "desc")
+        where("employeeId", "==", currentUser.uid)
       );
       
       const leavesSnap = await getDocs(leavesQuery);
@@ -67,9 +68,13 @@ function EmployeeDashboard() {
         const leave = { id: doc.id, ...doc.data() };
         requests.push(leave);
         
+        // Only count APPROVED leaves for used balance
         if (leave.status === 'approved') {
           const days = leave.days || 0;
-          if (leave.type === 'Casual Leave') used.cas += days;
+          
+          if (leave.type === 'Casual Leave') {
+            used.cas += days;
+          }
           else if (leave.type === 'Sick Leave') used.sic += days;
           else if (leave.type === 'Earned Leave') used.ear += days;
           else if (leave.type === 'Marriage Leave') used.mar += days;
@@ -79,6 +84,7 @@ function EmployeeDashboard() {
 
       setUsedLeaves(used);
       setLeaveRequests(requests);
+      
       setLoading(false);
 
     } catch (error) {
