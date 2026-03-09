@@ -12,16 +12,10 @@ function EmployeeDashboard() {
   const [usedLeaves, setUsedLeaves] = useState({});
   const [leaveRequests, setLeaveRequests] = useState([]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [debug, setDebug] = useState({});
 
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(async (currentUser) => {
       if (currentUser) {
-        console.log("========== USER INFO ==========");
-        console.log("Current user UID:", currentUser.uid);
-        console.log("Current user email:", currentUser.email);
-        console.log("Current user displayName:", currentUser.displayName);
-        
         setUser(currentUser);
         await fetchEmployeeData(currentUser);
       } else {
@@ -33,7 +27,6 @@ function EmployeeDashboard() {
 
   const fetchEmployeeData = async (currentUser) => {
     try {
-      // 1. Get employee's leave limits
       const usersRef = collection(db, "users");
       const userQuery = query(usersRef, where("email", "==", currentUser.email));
       const userSnap = await getDocs(userQuery);
@@ -45,15 +38,9 @@ function EmployeeDashboard() {
         mar: 5,
         ber: 3
       };
-      let userDocId = null;
       
       if (!userSnap.empty) {
-        userDocId = userSnap.docs[0].id;
         const userData = userSnap.docs[0].data();
-        console.log("========== USER DATA FROM FIRESTORE ==========");
-        console.log("User document ID:", userDocId);
-        console.log("User data:", userData);
-        
         limits = {
           cas: userData.leaveLimits?.cas || 12,
           sic: userData.leaveLimits?.sic || 10,
@@ -64,25 +51,20 @@ function EmployeeDashboard() {
       }
       setLeaveLimits(limits);
 
-      // 2. Fetch ALL leave requests for this employee
       const leavesRef = collection(db, "leaves");
-      console.log("========== FETCHING LEAVES ==========");
-      console.log("Searching for employeeId:", currentUser.uid);
-      
       const leavesQuery = query(
         leavesRef,
-        where("employeeId", "==", currentUser.uid)
+        where("employeeId", "==", currentUser.uid),
+        orderBy("appliedOn", "desc")
       );
       
       const leavesSnap = await getDocs(leavesQuery);
-      console.log("Number of leaves found:", leavesSnap.size);
       
       const requests = [];
       const used = { cas: 0, sic: 0, ear: 0, mar: 0, ber: 0 };
       
       leavesSnap.forEach(doc => {
         const leave = { id: doc.id, ...doc.data() };
-        console.log("Leave found:", leave);
         requests.push(leave);
         
         if (leave.status === 'approved') {
@@ -95,18 +77,8 @@ function EmployeeDashboard() {
         }
       });
 
-      console.log("Used leaves:", used);
-      console.log("Leave requests:", requests);
-
       setUsedLeaves(used);
       setLeaveRequests(requests);
-      setDebug({
-        userUid: currentUser.uid,
-        userEmail: currentUser.email,
-        userDocId: userDocId,
-        leavesFound: leavesSnap.size,
-        leaves: requests
-      });
       setLoading(false);
 
     } catch (error) {
@@ -484,7 +456,7 @@ function EmployeeDashboard() {
         </div>
 
         <div style={styles.sidebarMenu}>
-          <div style={{...styles.menuItem, ...styles.activeMenuItem}}>
+          <div style={{...styles.menuItem, ...styles.activeMenuItem}} onClick={() => navigate('/employee/dashboard')}>
             <span style={{ fontSize: "20px" }}>📊</span>
             {!sidebarCollapsed && <span>Dashboard</span>}
           </div>
@@ -499,7 +471,7 @@ function EmployeeDashboard() {
             {!sidebarCollapsed && <span>My Profile</span>}
           </div>
 
-          <div style={styles.menuItem}>
+          <div style={styles.menuItem} onClick={() => navigate('/employee/salary-slips')}>
             <span style={{ fontSize: "20px" }}>💰</span>
             {!sidebarCollapsed && <span>Salary Slips</span>}
           </div>
@@ -525,27 +497,6 @@ function EmployeeDashboard() {
               {user?.displayName?.charAt(0) || 'U'}
             </div>
           </div>
-        </div>
-
-        {/* Debug Info - Remove this after fixing */}
-        <div style={{
-          backgroundColor: "#f3f4f6",
-          padding: "16px",
-          borderRadius: "8px",
-          marginBottom: "20px",
-          fontSize: "12px",
-          fontFamily: "monospace"
-        }}>
-          <h3>Debug Info:</h3>
-          <p>User UID: {debug.userUid}</p>
-          <p>User Email: {debug.userEmail}</p>
-          <p>User Doc ID: {debug.userDocId}</p>
-          <p>Leaves Found: {debug.leavesFound}</p>
-          {debug.leaves && debug.leaves.map((l, i) => (
-            <div key={i} style={{ marginLeft: "10px" }}>
-              Leave {i+1}: {l.type} - {l.status} (ID: {l.id})
-            </div>
-          ))}
         </div>
 
         {/* Leave Balance Cards */}

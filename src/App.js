@@ -11,6 +11,7 @@ import ApplyLeave from './pages/Employee/ApplyLeave';
 import EmployeeProfile from './pages/Employee/Profile';
 import SalaryUpload from './pages/HR/SalaryUpload';
 import SalaryReports from './pages/HR/SalaryReports';
+import SalarySlips from './pages/Employee/SalarySlips';
 
 const HR_EMAIL = "shilpa.btech.aws@gmail.com";
 
@@ -69,6 +70,9 @@ function App() {
 } />
 <Route path="/hr/salary-reports" element={
   user && user.email === HR_EMAIL ? <SalaryReports /> : <Navigate to="/login" />
+} />
+<Route path="/employee/salary-slips" element={
+  !isHR ? <SalarySlips /> : <Navigate to="/hr/dashboard" />
 } />
       </Routes>
     </BrowserRouter>
