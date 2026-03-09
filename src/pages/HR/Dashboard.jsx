@@ -30,6 +30,9 @@ function HRDashboard() {
           <div style={styles.menuItem} onClick={() => handleNavigation('/hr/salary-upload')}>
             Salary Upload
           </div>
+          <div style={styles.menuItem} onClick={() => handleNavigation('/hr/salary-reports')}>
+  Salary Reports
+</div>
         </div>
         <button onClick={handleLogout} style={styles.logout}>Logout</button>
       </div>
