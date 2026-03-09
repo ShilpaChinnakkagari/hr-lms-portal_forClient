@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { auth, db } from '../../firebase/config';
 import { signOut } from 'firebase/auth';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
+import EmployeeModal from './EmployeeModal';
 
 function Employees() {
   const navigate = useNavigate();
@@ -11,45 +12,14 @@ function Employees() {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   
-  // Default leave limits for ALL employees (set by HR)
-  const [defaultLeaveLimits, setDefaultLeaveLimits] = useState({
-    casual: 12,
-    sick: 10,
-    earned: 15,
-    maternity: 0,
-    paternity: 0,
-    marriage: 5,
-    bereavement: 3,
-    study: 0,
-    unpaid: 0,
-    compensatory: 0
+  // Default leave limits for ALL employees
+  const [defaultLeaveLimits] = useState({
+    cas: 12,
+    sic: 10,
+    ear: 15,
+    mar: 5,
+    ber: 3
   });
-
-  const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    department: 'Engineering',
-    designation: '',
-    phone: '',
-    joinDate: new Date().toISOString().split('T')[0],
-    role: 'employee',
-    customLeaveLimits: {}, // Individual overrides (only if different from default)
-    useCustomLimits: false // Flag to use custom limits
-  });
-
-  // Available leave types for display
-  const leaveTypes = [
-    { id: 'casual', label: 'Casual Leave' },
-    { id: 'sick', label: 'Sick Leave' },
-    { id: 'earned', label: 'Earned Leave' },
-    { id: 'maternity', label: 'Maternity Leave' },
-    { id: 'paternity', label: 'Paternity Leave' },
-    { id: 'marriage', label: 'Marriage Leave' },
-    { id: 'bereavement', label: 'Bereavement Leave' },
-    { id: 'study', label: 'Study Leave' },
-    { id: 'unpaid', label: 'Unpaid Leave' },
-    { id: 'compensatory', label: 'Compensatory Off' }
-  ];
 
   useEffect(() => {
     fetchEmployees();
@@ -70,59 +40,13 @@ function Employees() {
     }
   };
 
-  const handleInputChange = (e) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value
-    });
-  };
-
-  const handleCustomLimitChange = (typeId, value) => {
-    setFormData({
-      ...formData,
-      customLeaveLimits: {
-        ...formData.customLeaveLimits,
-        [typeId]: parseInt(value) || 0
-      }
-    });
-  };
-
-  const handleDefaultLimitChange = (typeId, value) => {
-    setDefaultLeaveLimits({
-      ...defaultLeaveLimits,
-      [typeId]: parseInt(value) || 0
-    });
-  };
-
   const handleAddClick = () => {
     setEditingId(null);
-    setFormData({
-      name: '',
-      email: '',
-      department: 'Engineering',
-      designation: '',
-      phone: '',
-      joinDate: new Date().toISOString().split('T')[0],
-      role: 'employee',
-      customLeaveLimits: {},
-      useCustomLimits: false
-    });
     setShowForm(true);
   };
 
-  const handleEditClick = (emp) => {
-    setEditingId(emp.id);
-    setFormData({
-      name: emp.name || '',
-      email: emp.email || '',
-      department: emp.department || 'Engineering',
-      designation: emp.designation || '',
-      phone: emp.phone || '',
-      joinDate: emp.joinDate || new Date().toISOString().split('T')[0],
-      role: emp.role || 'employee',
-      customLeaveLimits: emp.customLeaveLimits || {},
-      useCustomLimits: emp.useCustomLimits || false
-    });
+  const handleEditClick = (employee) => {
+    setEditingId(employee.id);
     setShowForm(true);
   };
 
@@ -139,42 +63,21 @@ function Employees() {
     }
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    
-    if (!formData.name || !formData.email) {
-      alert('Name and Email are required');
-      return;
-    }
-
+  const handleSaveEmployee = async (employeeData) => {
     try {
-      // Save default limits to a separate collection (global settings)
-      if (!editingId) {
-        // Only save defaults when HR explicitly updates them
-        await addDoc(collection(db, "settings"), {
-          type: 'defaultLeaveLimits',
-          limits: defaultLeaveLimits,
-          updatedAt: new Date()
-        });
-      }
+      // Ensure all required fields are present
+      const cleanedData = {
+        ...employeeData,
+        updatedAt: new Date()
+      };
 
       if (editingId) {
         const employeeRef = doc(db, "users", editingId);
-        await updateDoc(employeeRef, {
-          name: formData.name,
-          email: formData.email,
-          department: formData.department,
-          designation: formData.designation,
-          phone: formData.phone,
-          joinDate: formData.joinDate,
-          role: formData.role,
-          customLeaveLimits: formData.customLeaveLimits,
-          useCustomLimits: formData.useCustomLimits
-        });
+        await updateDoc(employeeRef, cleanedData);
         alert('Employee updated successfully!');
       } else {
         const newEmployee = {
-          ...formData,
+          ...cleanedData,
           createdAt: new Date()
         };
         await addDoc(collection(db, "users"), newEmployee);
@@ -187,7 +90,7 @@ function Employees() {
       
     } catch (error) {
       console.error("Error saving employee:", error);
-      alert('Failed to save employee');
+      alert('Failed to save employee. Check console for details.');
     }
   };
 
@@ -201,480 +104,323 @@ function Employees() {
     navigate('/');
   };
 
-  // Get effective leave limits for an employee
-  const getEmployeeLimits = (emp) => {
-    if (emp.useCustomLimits && emp.customLeaveLimits) {
-      return emp.customLeaveLimits;
-    }
-    return defaultLeaveLimits;
+  const handleNavigation = (path) => {
+    navigate(path);
   };
 
   if (loading) {
-    return <div style={styles.loading}>Loading...</div>;
+    return (
+      <div style={{
+        height: "100vh",
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
+        backgroundColor: "#f3f4f6"
+      }}>
+        Loading...
+      </div>
+    );
   }
 
   return (
-    <div style={styles.container}>
+    <div style={{
+      display: "flex",
+      height: "100vh",
+      width: "100vw",
+      fontFamily: "sans-serif",
+      overflow: "hidden"
+    }}>
       {/* Sidebar */}
-      <div style={styles.sidebar}>
-        <h2 style={styles.logo}>HR Portal</h2>
-        <div style={styles.menu}>
-          <div style={styles.menuItem} onClick={() => navigate('/hr/dashboard')}>Dashboard</div>
-          <div style={styles.menuItemActive}>Employees</div>
-          <div style={styles.menuItem} onClick={() => navigate('/hr/leave-management')}>Leave Management</div>
+      <div style={{
+        width: "250px",
+        backgroundColor: "#111827",
+        color: "white",
+        height: "100vh",
+        display: "flex",
+        flexDirection: "column"
+      }}>
+        <div style={{
+          padding: "24px 20px",
+          borderBottom: "1px solid #1f2937"
+        }}>
+          <h2 style={{
+            fontSize: "20px",
+            fontWeight: "600",
+            margin: 0
+          }}>HR Portal</h2>
         </div>
-        <button onClick={handleLogout} style={styles.logout}>Logout</button>
+
+        <div style={{
+          flex: 1,
+          padding: "20px"
+        }}>
+          <div style={{
+            padding: "10px",
+            marginBottom: "5px",
+            borderRadius: "6px",
+            cursor: "pointer",
+            color: "#9ca3af"
+          }} onClick={() => handleNavigation('/hr/dashboard')}>
+            Dashboard
+          </div>
+          <div style={{
+            padding: "10px",
+            marginBottom: "5px",
+            borderRadius: "6px",
+            backgroundColor: "#374151",
+            color: "white",
+            cursor: "pointer"
+          }}>
+            Employees
+          </div>
+          <div style={{
+            padding: "10px",
+            marginBottom: "5px",
+            borderRadius: "6px",
+            cursor: "pointer",
+            color: "#9ca3af"
+          }} onClick={() => handleNavigation('/hr/leave-management')}>
+            Leave Management
+          </div>
+        </div>
+
+        <button onClick={handleLogout} style={{
+          margin: "20px",
+          padding: "12px",
+          backgroundColor: "#dc2626",
+          color: "white",
+          border: "none",
+          borderRadius: "6px",
+          cursor: "pointer"
+        }}>
+          Logout
+        </button>
       </div>
-      
+
       {/* Main Content */}
-      <div style={styles.content}>
-        <div style={styles.header}>
-          <h1>Employee Leave Management</h1>
-          <button onClick={handleAddClick} style={styles.addButton}>
+      <div style={{
+        flex: 1,
+        backgroundColor: "#f9fafb",
+        padding: "32px",
+        overflowY: "auto",
+        height: "100vh"
+      }}>
+        {/* Header */}
+        <div style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: "24px"
+        }}>
+          <div>
+            <h1 style={{
+              fontSize: "28px",
+              fontWeight: "600",
+              margin: "0 0 8px 0",
+              color: "#111827"
+            }}>
+              Employee Management
+            </h1>
+            <p style={{
+              fontSize: "16px",
+              color: "#6b7280",
+              margin: 0
+            }}>
+              {employees.length} total employees
+            </p>
+          </div>
+          <button onClick={handleAddClick} style={{
+            padding: "12px 24px",
+            backgroundColor: "#3b82f6",
+            color: "white",
+            border: "none",
+            borderRadius: "8px",
+            fontSize: "14px",
+            fontWeight: "500",
+            cursor: "pointer"
+          }}>
             + Add Employee
           </button>
         </div>
 
-        {/* Default Leave Limits Section (Global Settings) */}
-        <div style={styles.defaultLimitsSection}>
-          <h3 style={styles.sectionTitle}>Default Leave Limits (For All Employees)</h3>
-          <p style={styles.sectionNote}>These limits apply to all employees by default. You can override for individual employees below.</p>
-          
-          <div style={styles.defaultLimitsGrid}>
-            {leaveTypes.map(type => (
-              <div key={type.id} style={styles.defaultLimitItem}>
-                <label style={styles.label}>{type.label}</label>
-                <input
-                  type="number"
-                  min="0"
-                  value={defaultLeaveLimits[type.id] || 0}
-                  onChange={(e) => handleDefaultLimitChange(type.id, e.target.value)}
-                  style={styles.defaultLimitInput}
-                />
-              </div>
-            ))}
+        {/* Default Leave Limits Section */}
+        <div style={{
+          backgroundColor: "#e0f2fe",
+          padding: "20px",
+          borderRadius: "12px",
+          marginBottom: "24px"
+        }}>
+          <h3 style={{
+            fontSize: "16px",
+            fontWeight: "600",
+            margin: "0 0 8px 0",
+            color: "#0369a1"
+          }}>
+            Default Leave Limits (For All Employees)
+          </h3>
+          <p style={{
+            fontSize: "14px",
+            margin: "0 0 16px 0",
+            color: "#0369a1"
+          }}>
+            These limits apply to all employees by default. Override in individual employee settings.
+          </p>
+          <div style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "16px"
+          }}>
+            <span style={styles.limitBadge}>Casual: {defaultLeaveLimits.cas}</span>
+            <span style={styles.limitBadge}>Sick: {defaultLeaveLimits.sic}</span>
+            <span style={styles.limitBadge}>Earned: {defaultLeaveLimits.ear}</span>
+            <span style={styles.limitBadge}>Marriage: {defaultLeaveLimits.mar}</span>
+            <span style={styles.limitBadge}>Bereavement: {defaultLeaveLimits.ber}</span>
           </div>
-          <p style={styles.hint}>Changes to default limits will apply to all employees who don't have custom overrides.</p>
         </div>
 
-        {/* Add/Edit Employee Form */}
-        {showForm && (
-          <div style={styles.formContainer}>
-            <h3 style={styles.formTitle}>
-              {editingId ? 'Edit Employee' : 'Add New Employee'}
-            </h3>
-            <form onSubmit={handleSubmit}>
-              <div style={styles.formRow}>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Full Name *</label>
-                  <input
-                    type="text"
-                    name="name"
-                    value={formData.name}
-                    onChange={handleInputChange}
-                    style={styles.input}
-                    required
-                  />
-                </div>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Email *</label>
-                  <input
-                    type="email"
-                    name="email"
-                    value={formData.email}
-                    onChange={handleInputChange}
-                    style={styles.input}
-                    required
-                  />
-                </div>
-              </div>
-
-              <div style={styles.formRow}>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Department</label>
-                  <select
-                    name="department"
-                    value={formData.department}
-                    onChange={handleInputChange}
-                    style={styles.select}
-                  >
-                    <option value="Engineering">Engineering</option>
-                    <option value="Design">Design</option>
-                    <option value="Product">Product</option>
-                    <option value="HR">HR</option>
-                    <option value="Sales">Sales</option>
-                  </select>
-                </div>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Designation</label>
-                  <input
-                    type="text"
-                    name="designation"
-                    value={formData.designation}
-                    onChange={handleInputChange}
-                    style={styles.input}
-                  />
-                </div>
-              </div>
-
-              <div style={styles.formRow}>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Phone</label>
-                  <input
-                    type="text"
-                    name="phone"
-                    value={formData.phone}
-                    onChange={handleInputChange}
-                    style={styles.input}
-                  />
-                </div>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Join Date</label>
-                  <input
-                    type="date"
-                    name="joinDate"
-                    value={formData.joinDate}
-                    onChange={handleInputChange}
-                    style={styles.input}
-                  />
-                </div>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Role</label>
-                  <select
-                    name="role"
-                    value={formData.role}
-                    onChange={handleInputChange}
-                    style={styles.select}
-                  >
-                    <option value="employee">Employee</option>
-                    <option value="hr">HR</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Custom Leave Limits for this Employee */}
-              <div style={styles.customLimitsSection}>
-                <div style={styles.checkboxGroup}>
-                  <label style={styles.checkboxLabel}>
-                    <input
-                      type="checkbox"
-                      checked={formData.useCustomLimits}
-                      onChange={(e) => setFormData({...formData, useCustomLimits: e.target.checked})}
-                    />
-                    Use custom leave limits for this employee (override defaults)
-                  </label>
-                </div>
-
-                {formData.useCustomLimits && (
-                  <div style={styles.customLimitsGrid}>
-                    {leaveTypes.map(type => (
-                      <div key={type.id} style={styles.customLimitItem}>
-                        <label style={styles.label}>{type.label}</label>
-                        <input
-                          type="number"
-                          min="0"
-                          value={formData.customLeaveLimits[type.id] || 0}
-                          onChange={(e) => handleCustomLimitChange(type.id, e.target.value)}
-                          style={styles.customLimitInput}
-                          placeholder={`Default: ${defaultLeaveLimits[type.id]}`}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div style={styles.buttonGroup}>
-                <button type="button" onClick={handleCancel} style={styles.cancelButton}>
-                  Cancel
-                </button>
-                <button type="submit" style={styles.submitButton}>
-                  {editingId ? 'Update Employee' : 'Add Employee'}
-                </button>
-              </div>
-            </form>
-          </div>
-        )}
-
-        {/* Employee List */}
-        <div style={styles.tableContainer}>
-          <table style={styles.table}>
+        {/* Employee Table */}
+        <div style={{
+          backgroundColor: "white",
+          borderRadius: "12px",
+          overflow: "auto",
+          boxShadow: "0 1px 3px rgba(0,0,0,0.05)"
+        }}>
+          <table style={{
+            width: "100%",
+            borderCollapse: "collapse",
+            minWidth: "1200px"
+          }}>
             <thead>
               <tr>
                 <th style={styles.tableHeader}>Employee</th>
                 <th style={styles.tableHeader}>Department</th>
+                <th style={styles.tableHeader}>Designation</th>
+                <th style={styles.tableHeader}>Personal Details</th>
+                <th style={styles.tableHeader}>Salary</th>
                 <th style={styles.tableHeader}>Leave Limits</th>
-                <th style={styles.tableHeader}>Type</th>
                 <th style={styles.tableHeader}>Role</th>
                 <th style={styles.tableHeader}>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {employees.map(emp => {
-                const limits = getEmployeeLimits(emp);
-                const hasCustom = emp.useCustomLimits;
-                
-                return (
-                  <tr key={emp.id} style={styles.tableRow}>
-                    <td style={styles.tableCell}>
-                      <div style={styles.employeeName}>{emp.name}</div>
-                      <div style={styles.employeeEmail}>{emp.email}</div>
-                    </td>
-                    <td style={styles.tableCell}>{emp.department}</td>
-                    <td style={styles.tableCell}>
-                      <div style={styles.leaveBadges}>
-                        {Object.entries(limits)
-                          .filter(([_, value]) => value > 0)
-                          .map(([key, value]) => (
-                            <span key={key} style={styles.leaveBadge}>
-                              {key.substring(0, 3)}: {value}
-                            </span>
-                          ))}
-                      </div>
-                    </td>
-                    <td style={styles.tableCell}>
-                      {hasCustom ? (
-                        <span style={styles.customBadge}>Custom</span>
-                      ) : (
-                        <span style={styles.defaultBadge}>Default</span>
-                      )}
-                    </td>
-                    <td style={styles.tableCell}>
-                      <span style={{
-                        ...styles.roleBadge,
-                        backgroundColor: emp.role === 'hr' ? '#dbeafe' : '#f3f4f6',
-                        color: emp.role === 'hr' ? '#1e40af' : '#4b5563'
-                      }}>
-                        {emp.role === 'hr' ? 'HR' : 'Employee'}
-                      </span>
-                    </td>
-                    <td style={styles.tableCell}>
-                      <button onClick={() => handleEditClick(emp)} style={styles.editButton}>
-                        ✏️ Edit
-                      </button>
-                      <button onClick={() => handleDeleteClick(emp.id, emp.name)} style={styles.deleteButton}>
-                        🗑️ Delete
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
+              {employees.map(emp => (
+                <tr key={emp.id} style={styles.tableRow}>
+                  <td style={styles.tableCell}>
+                    <div style={{ fontWeight: "500" }}>{emp.name}</div>
+                    <div style={{ fontSize: "12px", color: "#6b7280" }}>{emp.email}</div>
+                    <div style={{ fontSize: "11px", color: "#9ca3af" }}>{emp.phone}</div>
+                  </td>
+                  <td style={styles.tableCell}>{emp.department || '—'}</td>
+                  <td style={styles.tableCell}>{emp.designation || '—'}</td>
+                  <td style={styles.tableCell}>
+                    {emp.fatherName && <div style={styles.detailItem}>Father: {emp.fatherName}</div>}
+                    {emp.motherName && <div style={styles.detailItem}>Mother: {emp.motherName}</div>}
+                    {emp.panNumber && <div style={styles.detailItem}>PAN: {emp.panNumber}</div>}
+                    {emp.aadhaarNumber && <div style={styles.detailItem}>Aadhaar: {emp.aadhaarNumber}</div>}
+                    {!emp.fatherName && !emp.panNumber && <span style={{ color: "#9ca3af" }}>—</span>}
+                  </td>
+                  <td style={styles.tableCell}>
+                    {emp.salary ? (
+                      <>
+                        <div style={{ fontWeight: "500", color: "#059669" }}>
+                          ₹{(emp.salary.basic || 0).toLocaleString()}
+                        </div>
+                        <div style={{ fontSize: "11px", color: "#6b7280" }}>
+                          Net: ₹{(emp.salary.netSalary || 0).toLocaleString()}
+                        </div>
+                      </>
+                    ) : (
+                      <span style={{ color: "#9ca3af" }}>Not set</span>
+                    )}
+                  </td>
+                  <td style={styles.tableCell}>
+                    <div style={styles.leaveBadges}>
+                      <span style={styles.leaveBadge}>C: {emp.leaveLimits?.cas || defaultLeaveLimits.cas}</span>
+                      <span style={styles.leaveBadge}>S: {emp.leaveLimits?.sic || defaultLeaveLimits.sic}</span>
+                      <span style={styles.leaveBadge}>E: {emp.leaveLimits?.ear || defaultLeaveLimits.ear}</span>
+                      <span style={styles.leaveBadge}>M: {emp.leaveLimits?.mar || defaultLeaveLimits.mar}</span>
+                      <span style={styles.leaveBadge}>B: {emp.leaveLimits?.ber || defaultLeaveLimits.ber}</span>
+                    </div>
+                  </td>
+                  <td style={styles.tableCell}>
+                    <span style={{
+                      ...styles.roleBadge,
+                      backgroundColor: emp.role === 'hr' ? '#dbeafe' : '#f3f4f6',
+                      color: emp.role === 'hr' ? '#1e40af' : '#4b5563'
+                    }}>
+                      {emp.role === 'hr' ? 'HR' : 'Employee'}
+                    </span>
+                  </td>
+                  <td style={styles.tableCell}>
+                    <button
+                      onClick={() => handleEditClick(emp)}
+                      style={styles.editButton}
+                      title="Edit Employee"
+                    >
+                      ✏️
+                    </button>
+                    <button
+                      onClick={() => handleDeleteClick(emp.id, emp.name)}
+                      style={styles.deleteButton}
+                      title="Delete Employee"
+                    >
+                      🗑️
+                    </button>
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
+
+        {/* Summary Cards */}
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(4, 1fr)",
+          gap: "20px",
+          marginTop: "24px"
+        }}>
+          <div style={styles.summaryCard}>
+            <div style={{ fontSize: "14px", color: "#6b7280" }}>Total Employees</div>
+            <div style={{ fontSize: "28px", fontWeight: "600" }}>{employees.length}</div>
+          </div>
+          <div style={styles.summaryCard}>
+            <div style={{ fontSize: "14px", color: "#6b7280" }}>HR Admins</div>
+            <div style={{ fontSize: "28px", fontWeight: "600" }}>
+              {employees.filter(e => e.role === 'hr').length}
+            </div>
+          </div>
+          <div style={styles.summaryCard}>
+            <div style={{ fontSize: "14px", color: "#6b7280" }}>Active Employees</div>
+            <div style={{ fontSize: "28px", fontWeight: "600" }}>
+              {employees.filter(e => e.role === 'employee').length}
+            </div>
+          </div>
+          <div style={styles.summaryCard}>
+            <div style={{ fontSize: "14px", color: "#6b7280" }}>Avg Salary</div>
+            <div style={{ fontSize: "28px", fontWeight: "600" }}>
+              ₹{Math.round(employees.reduce((acc, emp) => acc + (emp.salary?.basic || 0), 0) / (employees.length || 1)).toLocaleString()}
+            </div>
+          </div>
+        </div>
       </div>
+
+      {/* Employee Modal */}
+      {showForm && (
+        <EmployeeModal
+          employee={editingId ? employees.find(e => e.id === editingId) : null}
+          onClose={handleCancel}
+          onSave={handleSaveEmployee}
+        />
+      )}
     </div>
   );
 }
 
 const styles = {
-  container: {
-    display: "flex",
-    height: "100vh",
-    fontFamily: "sans-serif"
-  },
-  loading: {
-    height: "100vh",
-    display: "flex",
-    justifyContent: "center",
-    alignItems: "center"
-  },
-  sidebar: {
-    width: "250px",
-    backgroundColor: "#111827",
-    color: "white",
-    padding: "20px",
-    display: "flex",
-    flexDirection: "column"
-  },
-  logo: {
-    marginBottom: "30px"
-  },
-  menu: {
-    flex: 1
-  },
-  menuItem: {
-    padding: "10px",
-    marginBottom: "5px",
-    borderRadius: "6px",
-    cursor: "pointer",
-    color: "#9ca3af"
-  },
-  menuItemActive: {
-    padding: "10px",
-    marginBottom: "5px",
-    borderRadius: "6px",
-    backgroundColor: "#374151",
-    color: "white"
-  },
-  logout: {
-    padding: "10px",
-    backgroundColor: "#dc2626",
-    color: "white",
-    border: "none",
-    borderRadius: "6px",
-    cursor: "pointer"
-  },
-  content: {
-    flex: 1,
-    padding: "20px",
-    backgroundColor: "#f3f4f6",
-    overflow: "auto"
-  },
-  header: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: "20px"
-  },
-  addButton: {
-    padding: "10px 20px",
-    backgroundColor: "#3b82f6",
-    color: "white",
-    border: "none",
-    borderRadius: "6px",
-    cursor: "pointer"
-  },
-  defaultLimitsSection: {
-    backgroundColor: "#e0f2fe",
-    padding: "20px",
-    borderRadius: "8px",
-    marginBottom: "20px"
-  },
-  sectionTitle: {
-    margin: "0 0 10px 0"
-  },
-  sectionNote: {
-    margin: "0 0 15px 0",
-    fontSize: "13px",
-    color: "#0369a1"
-  },
-  defaultLimitsGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
-    gap: "15px",
-    marginBottom: "10px"
-  },
-  defaultLimitItem: {
-    display: "flex",
-    flexDirection: "column"
-  },
-  defaultLimitInput: {
-    padding: "8px",
-    border: "1px solid #bae6fd",
-    borderRadius: "6px",
-    fontSize: "14px",
-    backgroundColor: "white"
-  },
-  hint: {
-    fontSize: "12px",
-    color: "#0369a1",
-    margin: 0
-  },
-  formContainer: {
-    backgroundColor: "white",
-    padding: "20px",
-    borderRadius: "8px",
-    marginBottom: "20px"
-  },
-  formTitle: {
-    margin: "0 0 20px 0"
-  },
-  formRow: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))",
-    gap: "15px",
-    marginBottom: "15px"
-  },
-  formGroup: {
-    flex: 1
-  },
-  label: {
-    display: "block",
-    marginBottom: "5px",
-    fontSize: "14px",
-    fontWeight: "500"
-  },
-  input: {
-    width: "100%",
-    padding: "10px",
-    border: "1px solid #d1d5db",
-    borderRadius: "6px",
-    fontSize: "14px",
-    boxSizing: "border-box"
-  },
-  select: {
-    width: "100%",
-    padding: "10px",
-    border: "1px solid #d1d5db",
-    borderRadius: "6px",
-    fontSize: "14px",
-    backgroundColor: "white"
-  },
-  customLimitsSection: {
-    marginTop: "20px",
-    marginBottom: "20px",
-    padding: "20px",
-    backgroundColor: "#fef3c7",
-    borderRadius: "8px"
-  },
-  checkboxGroup: {
-    marginBottom: "15px"
-  },
-  checkboxLabel: {
-    fontSize: "14px",
-    cursor: "pointer"
-  },
-  customLimitsGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
-    gap: "15px"
-  },
-  customLimitItem: {
-    display: "flex",
-    flexDirection: "column"
-  },
-  customLimitInput: {
-    padding: "8px",
-    border: "1px solid #fde68a",
-    borderRadius: "6px",
-    fontSize: "14px",
-    backgroundColor: "white"
-  },
-  buttonGroup: {
-    display: "flex",
-    gap: "10px",
-    justifyContent: "flex-end"
-  },
-  cancelButton: {
-    padding: "10px 20px",
-    backgroundColor: "#9ca3af",
-    color: "white",
-    border: "none",
-    borderRadius: "6px",
-    cursor: "pointer"
-  },
-  submitButton: {
-    padding: "10px 20px",
-    backgroundColor: "#3b82f6",
-    color: "white",
-    border: "none",
-    borderRadius: "6px",
-    cursor: "pointer"
-  },
-  tableContainer: {
-    backgroundColor: "white",
-    borderRadius: "8px",
-    overflow: "auto"
-  },
-  table: {
-    width: "100%",
-    borderCollapse: "collapse",
-    minWidth: "1000px"
-  },
   tableHeader: {
     textAlign: "left",
-    padding: "12px",
+    padding: "16px",
     fontSize: "12px",
     fontWeight: "600",
     color: "#6b7280",
@@ -682,19 +428,19 @@ const styles = {
     borderBottom: "1px solid #e5e7eb"
   },
   tableRow: {
-    borderBottom: "1px solid #e5e7eb"
+    borderBottom: "1px solid #e5e7eb",
+    ':hover': {
+      backgroundColor: "#f9fafb"
+    }
   },
   tableCell: {
-    padding: "12px",
+    padding: "16px",
     fontSize: "14px"
   },
-  employeeName: {
-    fontSize: "14px",
-    fontWeight: "500"
-  },
-  employeeEmail: {
+  detailItem: {
     fontSize: "12px",
-    color: "#6b7280"
+    marginBottom: "2px",
+    color: "#4b5563"
   },
   leaveBadges: {
     display: "flex",
@@ -707,19 +453,12 @@ const styles = {
     borderRadius: "4px",
     fontSize: "11px"
   },
-  customBadge: {
-    backgroundColor: "#fef3c7",
-    color: "#92400e",
-    padding: "2px 6px",
-    borderRadius: "4px",
-    fontSize: "11px"
-  },
-  defaultBadge: {
-    backgroundColor: "#dbeafe",
-    color: "#1e40af",
-    padding: "2px 6px",
-    borderRadius: "4px",
-    fontSize: "11px"
+  limitBadge: {
+    backgroundColor: "white",
+    padding: "4px 8px",
+    borderRadius: "12px",
+    fontSize: "12px",
+    fontWeight: "500"
   },
   roleBadge: {
     padding: "4px 8px",
@@ -727,20 +466,28 @@ const styles = {
     fontSize: "12px"
   },
   editButton: {
-    padding: "4px 8px",
+    padding: "6px",
     marginRight: "8px",
     backgroundColor: "#f3f4f6",
     border: "none",
     borderRadius: "4px",
-    cursor: "pointer"
+    cursor: "pointer",
+    fontSize: "14px"
   },
   deleteButton: {
-    padding: "4px 8px",
+    padding: "6px",
     backgroundColor: "#fee2e2",
     color: "#991b1b",
     border: "none",
     borderRadius: "4px",
-    cursor: "pointer"
+    cursor: "pointer",
+    fontSize: "14px"
+  },
+  summaryCard: {
+    backgroundColor: "white",
+    padding: "20px",
+    borderRadius: "12px",
+    boxShadow: "0 1px 3px rgba(0,0,0,0.05)"
   }
 };
 
