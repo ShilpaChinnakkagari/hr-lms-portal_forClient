@@ -11,14 +11,25 @@ function HRDashboard() {
     navigate('/');
   };
 
+  const handleNavigation = (path) => {
+    navigate(path);
+  };
+
   return (
     <div style={styles.container}>
       <div style={styles.sidebar}>
         <h2 style={styles.logo}>HR Portal</h2>
         <div style={styles.menu}>
           <div style={styles.menuItemActive}>Dashboard</div>
-          <div style={styles.menuItem} onClick={() => navigate('/hr/employees')}>Employees</div>
-          <div style={styles.menuItem} onClick={() => navigate('/hr/leave-management')}>Leave Management</div>
+          <div style={styles.menuItem} onClick={() => handleNavigation('/hr/employees')}>
+            Employees
+          </div>
+          <div style={styles.menuItem} onClick={() => handleNavigation('/hr/leave-management')}>
+            Leave Management
+          </div>
+          <div style={styles.menuItem} onClick={() => handleNavigation('/hr/salary-upload')}>
+            Salary Upload
+          </div>
         </div>
         <button onClick={handleLogout} style={styles.logout}>Logout</button>
       </div>

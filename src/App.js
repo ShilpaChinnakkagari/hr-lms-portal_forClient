@@ -8,6 +8,8 @@ import Employees from './pages/HR/Employees';
 import LeaveManagement from './pages/HR/LeaveManagement';
 import EmployeeDashboard from './pages/Employee/Dashboard';
 import ApplyLeave from './pages/Employee/ApplyLeave';
+import EmployeeProfile from './pages/Employee/Profile';
+import SalaryUpload from './pages/HR/SalaryUpload';
 
 const HR_EMAIL = "shilpa.btech.aws@gmail.com";
 
@@ -58,6 +60,12 @@ function App() {
         <Route path="/employee/dashboard" element={!isHR ? <EmployeeDashboard /> : <Navigate to="/hr/dashboard" />} />
         <Route path="/employee/apply-leave" element={!isHR ? <ApplyLeave /> : <Navigate to="/hr/dashboard" />} />
         <Route path="/" element={<Navigate to={isHR ? "/hr/dashboard" : "/employee/dashboard"} />} />
+        <Route path="/employee/profile" element={
+  !isHR ? <EmployeeProfile /> : <Navigate to="/hr/dashboard" />
+} />
+<Route path="/hr/salary-upload" element={
+  user && user.email === HR_EMAIL ? <SalaryUpload /> : <Navigate to="/login" />
+} />
       </Routes>
     </BrowserRouter>
   );
