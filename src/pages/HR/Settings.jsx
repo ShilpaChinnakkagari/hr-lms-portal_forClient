@@ -3,18 +3,29 @@ import { useNavigate } from 'react-router-dom';
 import { auth, db } from '../../firebase/config';
 import { signOut } from 'firebase/auth';
 import { doc, setDoc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { getLeaveLimits, saveLeaveLimits } from '../../services/leaveLimitsService';
 
 function HRSettings() {
   const navigate = useNavigate();
   const [hrEmail, setHrEmail] = useState('');
+  const [leaveLimits, setLeaveLimits] = useState({
+    cas: 12,
+    sic: 10,
+    ear: 15,
+    mar: 5,
+    ber: 3
+  });
   const [currentHREmails, setCurrentHREmails] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [savingLimits, setSavingLimits] = useState(false);
   const [message, setMessage] = useState('');
+  const [limitsMessage, setLimitsMessage] = useState('');
 
   useEffect(() => {
     fetchHREmail();
     fetchCurrentHRs();
+    fetchLeaveLimits();
   }, []);
 
   const fetchHREmail = async () => {
@@ -24,12 +35,21 @@ function HRSettings() {
       if (settingsSnap.exists()) {
         setHrEmail(settingsSnap.data().email);
       } else {
-        setHrEmail('shilpa.btech.aws@gmail.com'); // Default
+        setHrEmail('');
       }
       setLoading(false);
     } catch (error) {
       console.error("Error fetching HR email:", error);
       setLoading(false);
+    }
+  };
+
+  const fetchLeaveLimits = async () => {
+    try {
+      const limits = await getLeaveLimits();
+      setLeaveLimits(limits);
+    } catch (error) {
+      console.error("Error fetching leave limits:", error);
     }
   };
 
@@ -45,7 +65,7 @@ function HRSettings() {
     }
   };
 
-  const handleSave = async () => {
+  const handleSaveHREmail = async () => {
     if (!hrEmail) {
       setMessage('Please enter an email address');
       return;
@@ -65,6 +85,22 @@ function HRSettings() {
       setMessage('Failed to update HR email');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleSaveLeaveLimits = async () => {
+    setSavingLimits(true);
+    try {
+      const success = await saveLeaveLimits(leaveLimits);
+      if (success) {
+        setLimitsMessage('Leave limits updated successfully!');
+      } else {
+        setLimitsMessage('Failed to update leave limits');
+      }
+    } catch (error) {
+      setLimitsMessage('Failed to update leave limits');
+    } finally {
+      setSavingLimits(false);
     }
   };
 
@@ -107,6 +143,12 @@ function HRSettings() {
           <div style={styles.menuItem} onClick={() => handleNavigation('/hr/leave-management')}>
             Leave Management
           </div>
+          <div style={styles.menuItem} onClick={() => handleNavigation('/hr/salary-upload')}>
+            Salary Upload
+          </div>
+          <div style={styles.menuItem} onClick={() => handleNavigation('/hr/salary-reports')}>
+            Salary Reports
+          </div>
           <div style={{...styles.menuItem, ...styles.activeMenuItem}} onClick={() => handleNavigation('/hr/settings')}>
             Settings
           </div>
@@ -124,10 +166,11 @@ function HRSettings() {
           Configure HR portal settings
         </p>
 
+        {/* HR Email Configuration Card */}
         <div style={styles.card}>
           <h2 style={styles.cardTitle}>HR Email Configuration</h2>
           <p style={styles.cardDescription}>
-            Set the email address that will have HR access. Only this email can access the HR portal.
+            Set the email address that will have HR access.
           </p>
 
           <div style={styles.formGroup}>
@@ -148,28 +191,104 @@ function HRSettings() {
           )}
 
           <button 
-            onClick={handleSave} 
+            onClick={handleSaveHREmail} 
             disabled={saving}
             style={saving ? {...styles.saveButton, opacity: 0.6} : styles.saveButton}
           >
-            {saving ? 'Saving...' : 'Save Changes'}
+            {saving ? 'Saving...' : 'Save HR Email'}
           </button>
+        </div>
 
-          {currentHREmails.length > 0 && (
-            <div style={styles.hrList}>
-              <h3 style={styles.hrListTitle}>Current HR Administrators (from database):</h3>
-              <ul style={styles.hrListItems}>
-                {currentHREmails.map((email, index) => (
-                  <li key={index} style={styles.hrListItem}>{email}</li>
-                ))}
-              </ul>
+        {/* Leave Limits Configuration Card */}
+        <div style={{...styles.card, marginTop: '24px'}}>
+          <h2 style={styles.cardTitle}>Default Leave Limits</h2>
+          <p style={styles.cardDescription}>
+            Set default leave limits for all employees. These can be overridden per employee.
+          </p>
+
+          <div style={styles.limitsGrid}>
+            <div style={styles.limitItem}>
+              <label style={styles.limitLabel}>Casual Leave (CAS)</label>
+              <input
+                type="number"
+                value={leaveLimits.cas}
+                onChange={(e) => setLeaveLimits({...leaveLimits, cas: parseInt(e.target.value) || 0})}
+                style={styles.limitInput}
+                min="0"
+              />
+            </div>
+            
+            <div style={styles.limitItem}>
+              <label style={styles.limitLabel}>Sick Leave (SIC)</label>
+              <input
+                type="number"
+                value={leaveLimits.sic}
+                onChange={(e) => setLeaveLimits({...leaveLimits, sic: parseInt(e.target.value) || 0})}
+                style={styles.limitInput}
+                min="0"
+              />
+            </div>
+            
+            <div style={styles.limitItem}>
+              <label style={styles.limitLabel}>Earned Leave (EAR)</label>
+              <input
+                type="number"
+                value={leaveLimits.ear}
+                onChange={(e) => setLeaveLimits({...leaveLimits, ear: parseInt(e.target.value) || 0})}
+                style={styles.limitInput}
+                min="0"
+              />
+            </div>
+            
+            <div style={styles.limitItem}>
+              <label style={styles.limitLabel}>Marriage Leave (MAR)</label>
+              <input
+                type="number"
+                value={leaveLimits.mar}
+                onChange={(e) => setLeaveLimits({...leaveLimits, mar: parseInt(e.target.value) || 0})}
+                style={styles.limitInput}
+                min="0"
+              />
+            </div>
+            
+            <div style={styles.limitItem}>
+              <label style={styles.limitLabel}>Bereavement Leave (BER)</label>
+              <input
+                type="number"
+                value={leaveLimits.ber}
+                onChange={(e) => setLeaveLimits({...leaveLimits, ber: parseInt(e.target.value) || 0})}
+                style={styles.limitInput}
+                min="0"
+              />
+            </div>
+          </div>
+
+          {limitsMessage && (
+            <div style={limitsMessage.includes('success') ? styles.successMessage : styles.errorMessage}>
+              {limitsMessage}
             </div>
           )}
 
-          <div style={styles.note}>
-            <strong>Note:</strong> After changing the HR email, the new email will need to log in again.
-          </div>
+          <button 
+            onClick={handleSaveLeaveLimits} 
+            disabled={savingLimits}
+            style={savingLimits ? {...styles.saveButton, opacity: 0.6, marginTop: '16px'} : {...styles.saveButton, marginTop: '16px'}}
+          >
+            {savingLimits ? 'Saving...' : 'Save Leave Limits'}
+          </button>
         </div>
+
+        {/* Current HR Admins List */}
+        {currentHREmails.length > 0 && (
+          <div style={{...styles.card, marginTop: '24px'}}>
+            <h3 style={styles.hrListTitle}>Current HR Administrators</h3>
+            <ul style={styles.hrListItems}>
+              {currentHREmails.map((email, index) => (
+                <li key={index} style={styles.hrListItem}>{email}</li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -301,8 +420,7 @@ const styles = {
     borderRadius: "8px",
     fontSize: "14px",
     fontWeight: "500",
-    cursor: "pointer",
-    marginBottom: "16px"
+    cursor: "pointer"
   },
   successMessage: {
     backgroundColor: "#d1fae5",
@@ -320,14 +438,30 @@ const styles = {
     marginBottom: "16px",
     fontSize: "14px"
   },
-  hrList: {
-    marginTop: "20px",
-    padding: "16px",
-    backgroundColor: "#f3f4f6",
-    borderRadius: "8px"
+  limitsGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(2, 1fr)",
+    gap: "16px",
+    marginBottom: "16px"
+  },
+  limitItem: {
+    display: "flex",
+    flexDirection: "column"
+  },
+  limitLabel: {
+    fontSize: "13px",
+    fontWeight: "500",
+    color: "#4b5563",
+    marginBottom: "4px"
+  },
+  limitInput: {
+    padding: "10px",
+    border: "1px solid #d1d5db",
+    borderRadius: "6px",
+    fontSize: "14px"
   },
   hrListTitle: {
-    fontSize: "14px",
+    fontSize: "16px",
     fontWeight: "600",
     margin: "0 0 10px 0",
     color: "#374151"
@@ -338,18 +472,10 @@ const styles = {
     listStyle: "none"
   },
   hrListItem: {
-    padding: "6px 0",
-    fontSize: "13px",
+    padding: "8px 0",
+    fontSize: "14px",
     color: "#4b5563",
     borderBottom: "1px solid #e5e7eb"
-  },
-  note: {
-    backgroundColor: "#f3f4f6",
-    padding: "12px",
-    borderRadius: "8px",
-    fontSize: "13px",
-    color: "#4b5563",
-    marginTop: "16px"
   }
 };
 

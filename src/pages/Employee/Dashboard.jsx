@@ -2,7 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { auth, db } from '../../firebase/config';
 import { signOut } from 'firebase/auth';
-import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { getLeaveLimits } from '../../services/leaveLimitsService';
 
 function EmployeeDashboard() {
   const navigate = useNavigate();
@@ -27,27 +28,31 @@ function EmployeeDashboard() {
 
   const fetchEmployeeData = async (currentUser) => {
     try {
-      // Get employee's leave limits
+      // Get global leave limits from Firebase
+      const globalLimits = await getLeaveLimits();
+      
+      // Get employee's leave limits from database
       const usersRef = collection(db, "users");
       const userQuery = query(usersRef, where("email", "==", currentUser.email));
       const userSnap = await getDocs(userQuery);
       
       let limits = {
-        cas: 12,
-        sic: 10,
-        ear: 15,
-        mar: 5,
-        ber: 3
+        cas: globalLimits.cas || 12,
+        sic: globalLimits.sic || 10,
+        ear: globalLimits.ear || 15,
+        mar: globalLimits.mar || 5,
+        ber: globalLimits.ber || 3
       };
       
       if (!userSnap.empty) {
         const userData = userSnap.docs[0].data();
+        // User-specific limits override global limits
         limits = {
-          cas: userData.leaveLimits?.cas || 12,
-          sic: userData.leaveLimits?.sic || 10,
-          ear: userData.leaveLimits?.ear || 15,
-          mar: userData.leaveLimits?.mar || 5,
-          ber: userData.leaveLimits?.ber || 3
+          cas: userData.leaveLimits?.cas || globalLimits.cas || 12,
+          sic: userData.leaveLimits?.sic || globalLimits.sic || 10,
+          ear: userData.leaveLimits?.ear || globalLimits.ear || 15,
+          mar: userData.leaveLimits?.mar || globalLimits.mar || 5,
+          ber: userData.leaveLimits?.ber || globalLimits.ber || 3
         };
       }
       setLeaveLimits(limits);
@@ -505,7 +510,7 @@ function EmployeeDashboard() {
           </div>
         </div>
 
-        {/* Leave Balance Cards */}
+        {/* Leave Balance Cards - Using Dynamic Limits */}
         <div style={styles.balanceContainer}>
           {activeLeaveTypes.map(({ key, limit }) => {
             const used = usedLeaves[key] || 0;

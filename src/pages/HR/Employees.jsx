@@ -4,6 +4,7 @@ import { auth, db } from '../../firebase/config';
 import { signOut } from 'firebase/auth';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 import EmployeeModal from './EmployeeModal';
+import { getLeaveLimits } from '../../services/leaveLimitsService';
 
 function Employees() {
   const navigate = useNavigate();
@@ -12,8 +13,8 @@ function Employees() {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   
-  // Default leave limits for ALL employees
-  const [defaultLeaveLimits] = useState({
+  // Dynamic default leave limits from Firebase
+  const [defaultLeaveLimits, setDefaultLeaveLimits] = useState({
     cas: 12,
     sic: 10,
     ear: 15,
@@ -23,7 +24,17 @@ function Employees() {
 
   useEffect(() => {
     fetchEmployees();
+    fetchLeaveLimits();
   }, []);
+
+  const fetchLeaveLimits = async () => {
+    try {
+      const limits = await getLeaveLimits();
+      setDefaultLeaveLimits(limits);
+    } catch (error) {
+      console.error("Error fetching limits:", error);
+    }
+  };
 
   const fetchEmployees = async () => {
     try {
@@ -182,6 +193,33 @@ function Employees() {
           }} onClick={() => handleNavigation('/hr/leave-management')}>
             Leave Management
           </div>
+          <div style={{
+            padding: "10px",
+            marginBottom: "5px",
+            borderRadius: "6px",
+            cursor: "pointer",
+            color: "#9ca3af"
+          }} onClick={() => handleNavigation('/hr/salary-upload')}>
+            Salary Upload
+          </div>
+          <div style={{
+            padding: "10px",
+            marginBottom: "5px",
+            borderRadius: "6px",
+            cursor: "pointer",
+            color: "#9ca3af"
+          }} onClick={() => handleNavigation('/hr/salary-reports')}>
+            Salary Reports
+          </div>
+          <div style={{
+            padding: "10px",
+            marginBottom: "5px",
+            borderRadius: "6px",
+            cursor: "pointer",
+            color: "#9ca3af"
+          }} onClick={() => handleNavigation('/hr/settings')}>
+            Settings
+          </div>
         </div>
 
         <button onClick={handleLogout} style={{
@@ -243,7 +281,7 @@ function Employees() {
           </button>
         </div>
 
-        {/* Default Leave Limits Section */}
+        {/* Default Leave Limits Section - NOW DYNAMIC */}
         <div style={{
           backgroundColor: "#e0f2fe",
           padding: "20px",

@@ -1,5 +1,6 @@
 import { db } from '../firebase/config';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { auth } from '../firebase/config';
 
 // Default fallback values
 const DEFAULT_LIMITS = {
@@ -31,9 +32,13 @@ export const saveLeaveLimits = async (limits) => {
   try {
     const limitsRef = doc(db, "settings", "leaveLimits");
     await setDoc(limitsRef, {
-      ...limits,
+      cas: Number(limits.cas) || 12,
+      sic: Number(limits.sic) || 10,
+      ear: Number(limits.ear) || 15,
+      mar: Number(limits.mar) || 5,
+      ber: Number(limits.ber) || 3,
       updatedAt: new Date(),
-      updatedBy: auth.currentUser?.email
+      updatedBy: auth.currentUser?.email || 'unknown'
     });
     return true;
   } catch (error) {

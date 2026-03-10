@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { auth, db } from '../../firebase/config';
 import { collection, addDoc, query, where, getDocs } from 'firebase/firestore';
+import { getLeaveLimits } from '../../services/leaveLimitsService';
 
 function ApplyLeave() {
   const navigate = useNavigate();
@@ -41,6 +42,9 @@ function ApplyLeave() {
 
   const fetchUserData = async (currentUser) => {
     try {
+      // Get global leave limits from Firebase first
+      const globalLimits = await getLeaveLimits();
+      
       // Get the user's document from Firestore
       const usersRef = collection(db, "users");
       const userQuery = query(usersRef, where("email", "==", currentUser.email));
@@ -48,21 +52,31 @@ function ApplyLeave() {
       
       if (!userSnap.empty) {
         const userDoc = userSnap.docs[0];
-        setUserDocId(userDoc.id); // This is the correct UID to use
+        setUserDocId(userDoc.id);
         const userData = userDoc.data();
         console.log("User document ID:", userDoc.id);
         console.log("User data:", userData);
         
+        // Set leave limits: user-specific overrides global, global overrides defaults
         setLeaveLimits({
-          cas: userData.cas || 12,
-          sic: userData.sic || 10,
-          ear: userData.ear || 15,
-          mar: userData.mar || 5,
-          ber: userData.ber || 3
+          cas: userData.cas || globalLimits.cas || 12,
+          sic: userData.sic || globalLimits.sic || 10,
+          ear: userData.ear || globalLimits.ear || 15,
+          mar: userData.mar || globalLimits.mar || 5,
+          ber: userData.ber || globalLimits.ber || 3
+        });
+      } else {
+        // If user not found in database, use global limits only
+        setLeaveLimits({
+          cas: globalLimits.cas || 12,
+          sic: globalLimits.sic || 10,
+          ear: globalLimits.ear || 15,
+          mar: globalLimits.mar || 5,
+          ber: globalLimits.ber || 3
         });
       }
 
-      // Get used leaves
+      // Get used leaves (approved leaves only)
       const leavesRef = collection(db, "leaves");
       const leavesQuery = query(
         leavesRef,
@@ -133,10 +147,20 @@ function ApplyLeave() {
         return;
       }
 
-      // IMPORTANT: Use user.uid (Google UID) for employeeId
+      // Get user data for correct name
+      const usersRef = collection(db, "users");
+      const userQuery = query(usersRef, where("email", "==", user.email));
+      const userSnap = await getDocs(userQuery);
+      let employeeName = user.displayName || user.email;
+      
+      if (!userSnap.empty) {
+        const userData = userSnap.docs[0].data();
+        employeeName = userData.name || employeeName;
+      }
+
       const leaveData = {
-        employeeId: user.uid, // This is the Google UID
-        employeeName: user.displayName || user.email,
+        employeeId: user.uid,
+        employeeName: employeeName,
         employeeEmail: user.email,
         type: getLeaveTypeLabel(formData.type),
         fromDate: formData.fromDate,
