@@ -1,9 +1,7 @@
 import React, { useState } from 'react';
 import { signInWithPopup } from 'firebase/auth';
-import { auth, provider, db } from '../firebase/config';
-import { collection, query, where, getDocs } from 'firebase/firestore';
-
-const HR_EMAIL = "shilpa.btech.aws@gmail.com";
+import { auth, provider } from '../firebase/config';
+import { checkUserExists, checkUserIsHR } from '../utils/hrAuth';
 
 function Login() {
   const [error, setError] = useState('');
@@ -17,20 +15,20 @@ function Login() {
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
       
-      if (user.email === HR_EMAIL) {
-        return;
-      }
+      // CHECK: Does this user exist in your employees list?
+      const userExists = await checkUserExists(user.email);
       
-      const usersRef = collection(db, "users");
-      const q = query(usersRef, where("email", "==", user.email));
-      const querySnapshot = await getDocs(q);
-      
-      if (querySnapshot.empty) {
+      if (!userExists) {
+        // User not in database - sign them out and show error
         await auth.signOut();
-        setError('You are not registered. Please contact HR.');
+        setError('Access Denied: You are not an employee. Please contact HR.');
         setLoading(false);
         return;
       }
+      
+      // User exists - let them in (App.js will handle HR/Employee routing)
+      // No need to redirect here, App.js will handle based on role
+      
     } catch (error) {
       setError('Login failed: ' + error.message);
       setLoading(false);

@@ -188,10 +188,13 @@ function LeaveManagement() {
       <div style={styles.sidebar}>
         <h2 style={styles.logo}>HR Portal</h2>
         <div style={styles.menu}>
-          <div style={styles.menuItem} onClick={() => handleNavigation('/hr/dashboard')}>Dashboard</div>
-          <div style={styles.menuItem} onClick={() => handleNavigation('/hr/employees')}>Employees</div>
-          <div style={styles.menuItemActive}>Leave Management</div>
-        </div>
+  <div style={styles.menuItem} onClick={() => handleNavigation('/hr/dashboard')}>Dashboard</div>
+  <div style={styles.menuItem} onClick={() => handleNavigation('/hr/employees')}>Employees</div>
+  <div style={styles.menuItemActive}>Leave Management</div>
+  <div style={styles.menuItem} onClick={() => handleNavigation('/hr/salary-upload')}>Salary Upload</div>
+  <div style={styles.menuItem} onClick={() => handleNavigation('/hr/salary-reports')}>Salary Reports</div>
+  <div style={styles.menuItem} onClick={() => handleNavigation('/hr/settings')}>Settings</div>
+</div>
         <button onClick={handleLogout} style={styles.logout}>Logout</button>
       </div>
 

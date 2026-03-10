@@ -2,17 +2,19 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { auth, db } from '../../firebase/config';
 import { signOut } from 'firebase/auth';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
+import { doc, setDoc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
 
 function HRSettings() {
   const navigate = useNavigate();
   const [hrEmail, setHrEmail] = useState('');
+  const [currentHREmails, setCurrentHREmails] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
 
   useEffect(() => {
     fetchHREmail();
+    fetchCurrentHRs();
   }, []);
 
   const fetchHREmail = async () => {
@@ -28,6 +30,18 @@ function HRSettings() {
     } catch (error) {
       console.error("Error fetching HR email:", error);
       setLoading(false);
+    }
+  };
+
+  const fetchCurrentHRs = async () => {
+    try {
+      const usersRef = collection(db, "users");
+      const q = query(usersRef, where("role", "==", "hr"));
+      const querySnapshot = await getDocs(q);
+      const hrs = querySnapshot.docs.map(doc => doc.data().email);
+      setCurrentHREmails(hrs);
+    } catch (error) {
+      console.error("Error fetching HRs:", error);
     }
   };
 
@@ -140,6 +154,17 @@ function HRSettings() {
           >
             {saving ? 'Saving...' : 'Save Changes'}
           </button>
+
+          {currentHREmails.length > 0 && (
+            <div style={styles.hrList}>
+              <h3 style={styles.hrListTitle}>Current HR Administrators (from database):</h3>
+              <ul style={styles.hrListItems}>
+                {currentHREmails.map((email, index) => (
+                  <li key={index} style={styles.hrListItem}>{email}</li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           <div style={styles.note}>
             <strong>Note:</strong> After changing the HR email, the new email will need to log in again.
@@ -295,12 +320,36 @@ const styles = {
     marginBottom: "16px",
     fontSize: "14px"
   },
+  hrList: {
+    marginTop: "20px",
+    padding: "16px",
+    backgroundColor: "#f3f4f6",
+    borderRadius: "8px"
+  },
+  hrListTitle: {
+    fontSize: "14px",
+    fontWeight: "600",
+    margin: "0 0 10px 0",
+    color: "#374151"
+  },
+  hrListItems: {
+    margin: 0,
+    padding: 0,
+    listStyle: "none"
+  },
+  hrListItem: {
+    padding: "6px 0",
+    fontSize: "13px",
+    color: "#4b5563",
+    borderBottom: "1px solid #e5e7eb"
+  },
   note: {
     backgroundColor: "#f3f4f6",
     padding: "12px",
     borderRadius: "8px",
     fontSize: "13px",
-    color: "#4b5563"
+    color: "#4b5563",
+    marginTop: "16px"
   }
 };
 
