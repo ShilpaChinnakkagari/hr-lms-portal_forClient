@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { auth, db } from '../../firebase/config';
 import { signOut } from 'firebase/auth';
-import { collection, addDoc } from 'firebase/firestore';
+import { collection, addDoc, getDocs, query, where } from 'firebase/firestore';
 import * as XLSX from 'xlsx';
 
 function SalaryUpload() {
@@ -11,37 +11,105 @@ function SalaryUpload() {
   const [preview, setPreview] = useState(false);
   const [saving, setSaving] = useState(false);
   const [month, setMonth] = useState(new Date().toLocaleString('default', { month: 'long', year: 'numeric' }));
+  const [validationErrors, setValidationErrors] = useState([]);
+  const [validData, setValidData] = useState([]);
 
   const handleFileUpload = (e) => {
     const file = e.target.files[0];
+    
+    // Check if file exists
+    if (!file) {
+      alert('Please select a file');
+      return;
+    }
+
+    // Check file type
+    const validTypes = ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel', 'text/csv'];
+    if (!validTypes.includes(file.type)) {
+      alert('Please upload a valid Excel file (.xlsx, .xls, .csv)');
+      return;
+    }
+
     const reader = new FileReader();
     
     reader.onload = (event) => {
-      const data = new Uint8Array(event.target.result);
-      const workbook = XLSX.read(data, { type: 'array' });
-      const sheetName = workbook.SheetNames[0];
-      const worksheet = workbook.Sheets[sheetName];
-      const jsonData = XLSX.utils.sheet_to_json(worksheet);
-      
-      setExcelData(jsonData);
-      setPreview(true);
+      try {
+        const data = new Uint8Array(event.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet);
+        
+        if (jsonData.length === 0) {
+          alert('The uploaded file is empty');
+          return;
+        }
+
+        setExcelData(jsonData);
+        validateEmails(jsonData);
+        setPreview(true);
+      } catch (error) {
+        console.error("Error parsing Excel:", error);
+        alert('Error parsing Excel file. Please check the file format.');
+      }
     };
-    
+
+    reader.onerror = () => {
+      alert('Error reading file');
+    };
+
     reader.readAsArrayBuffer(file);
   };
 
-  // SAVE DATA ONLY - NO PDF GENERATION
+  const validateEmails = async (data) => {
+    try {
+      setValidationErrors([]);
+      const errors = [];
+      const valid = [];
+      
+      // Get all employee emails from database
+      const usersRef = collection(db, "users");
+      const usersSnap = await getDocs(usersRef);
+      const employeeEmails = new Set(usersSnap.docs.map(doc => doc.data().email));
+      
+      // Check each record
+      for (let i = 0; i < data.length; i++) {
+        const emp = data[i];
+        const email = emp.employeeEmail || emp.Email || emp.email;
+        
+        if (!email) {
+          errors.push(`Row ${i + 1}: No email provided`);
+        } else if (!employeeEmails.has(email)) {
+          errors.push(`Row ${i + 1}: Email "${email}" is not a registered employee`);
+        } else {
+          valid.push(emp);
+        }
+      }
+      
+      setValidationErrors(errors);
+      setValidData(valid);
+    } catch (error) {
+      console.error("Error validating emails:", error);
+      alert('Error validating emails. Please try again.');
+    }
+  };
+
   const handleSaveData = async () => {
+    if (validationErrors.length > 0 && validData.length === 0) {
+      alert('No valid records to save. Please fix the errors first.');
+      return;
+    }
+
     setSaving(true);
     
     try {
-      for (let i = 0; i < excelData.length; i++) {
-        const emp = excelData[i];
+      for (let i = 0; i < validData.length; i++) {
+        const emp = validData[i];
         
         const employeeData = {
           employeeId: emp.employeeId || emp.EmployeeID || `EMP${String(i + 1).padStart(3, '0')}`,
           employeeName: emp.employeeName || emp.Name || 'Unknown',
-          employeeEmail: emp.employeeEmail || emp.Email || 'unknown@email.com',
+          employeeEmail: emp.employeeEmail || emp.Email || emp.email,
           department: emp.department || emp.Department || 'Engineering',
           designation: emp.designation || emp.Designation || 'Employee',
           basic: Number(emp.basic || emp.Basic || 0),
@@ -62,17 +130,27 @@ function SalaryUpload() {
           generatedBy: auth.currentUser?.email
         };
         
-        // Save to Firestore only - NO PDF
         await addDoc(collection(db, "salarySlips"), employeeData);
       }
       
-      alert(`✅ Successfully saved ${excelData.length} salary records to database!`);
+      const message = validationErrors.length > 0 
+        ? `✅ Successfully saved ${validData.length} salary records! ${validationErrors.length} invalid records skipped.`
+        : `✅ Successfully saved ${validData.length} salary records to database!`;
+      
+      alert(message);
+      
+      // Reset everything
       setPreview(false);
       setExcelData([]);
+      setValidData([]);
+      setValidationErrors([]);
+      
+      // Reset file input
+      document.getElementById('file-upload').value = '';
       
     } catch (error) {
-      console.error("Error:", error);
-      alert("Failed to save salary data");
+      console.error("Error saving data:", error);
+      alert("Failed to save salary data. Please try again.");
     } finally {
       setSaving(false);
     }
@@ -116,21 +194,40 @@ function SalaryUpload() {
     <div style={styles.container}>
       {/* Sidebar */}
       <div style={styles.sidebar}>
-        <h2 style={styles.logo}>HR Portal</h2>
-        <div style={styles.menu}>
-          <div style={styles.menuItem} onClick={() => handleNavigation('/hr/dashboard')}>Dashboard</div>
-          <div style={styles.menuItem} onClick={() => handleNavigation('/hr/employees')}>Employees</div>
-          <div style={styles.menuItem} onClick={() => handleNavigation('/hr/leave-management')}>Leave Management</div>
-          <div style={{...styles.menuItem, ...styles.activeMenuItem}}>Salary Upload</div>
-          <div style={styles.menuItem} onClick={() => handleNavigation('/hr/salary-reports')}>Salary Reports</div>
+        <div style={styles.sidebarHeader}>
+          <h2 style={styles.logo}>HR Portal</h2>
         </div>
-        <button onClick={handleLogout} style={styles.logout}>Logout</button>
+        
+        <div style={styles.sidebarMenu}>
+          <div style={styles.menuItem} onClick={() => handleNavigation('/hr/dashboard')}>
+            Dashboard
+          </div>
+          <div style={styles.menuItem} onClick={() => handleNavigation('/hr/employees')}>
+            Employees
+          </div>
+          <div style={styles.menuItem} onClick={() => handleNavigation('/hr/leave-management')}>
+            Leave Management
+          </div>
+          <div style={{...styles.menuItem, ...styles.activeMenuItem}} onClick={() => handleNavigation('/hr/salary-upload')}>
+            Salary Upload
+          </div>
+          <div style={styles.menuItem} onClick={() => handleNavigation('/hr/salary-reports')}>
+            Salary Reports
+          </div>
+          <div style={styles.menuItem} onClick={() => handleNavigation('/hr/settings')}>
+            Settings
+          </div>
+        </div>
+
+        <button onClick={handleLogout} style={styles.logoutButton}>
+          Logout
+        </button>
       </div>
 
       {/* Main Content */}
       <div style={styles.content}>
         <h1 style={styles.pageTitle}>Salary Management</h1>
-        <p style={styles.pageSubtitle}>Upload Excel and save salary data to database (No PDF generation)</p>
+        <p style={styles.pageSubtitle}>Upload Excel and save salary data to database</p>
 
         {/* Month Selection */}
         <div style={styles.monthSection}>
@@ -152,6 +249,7 @@ function SalaryUpload() {
               📥 Download Template
             </button>
             <input
+              id="file-upload"
               type="file"
               accept=".xlsx,.xls,.csv"
               onChange={handleFileUpload}
@@ -161,14 +259,63 @@ function SalaryUpload() {
           </div>
         </div>
 
-        {/* Preview Section */}
-        {preview && excelData.length > 0 && (
+        {/* Validation Errors */}
+        {validationErrors.length > 0 && (
+          <div style={styles.errorSection}>
+            <h3 style={styles.errorTitle}>❌ Validation Errors ({validationErrors.length})</h3>
+            <p style={styles.errorNote}>These records will be skipped:</p>
+            <ul style={styles.errorList}>
+              {validationErrors.map((error, index) => (
+                <li key={index} style={styles.errorItem}>{error}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* Valid Data Preview */}
+        {validData.length > 0 && (
           <div style={styles.previewSection}>
-            <h3 style={styles.sectionTitle}>Step 2: Save to Database</h3>
-            <p>Found {excelData.length} employee records to save</p>
+            <h3 style={styles.sectionTitle}>Step 2: Review Valid Records ({validData.length})</h3>
+            <p style={styles.successNote}>✅ These employees exist in database and will be saved:</p>
+            
+            <div style={styles.tableContainer}>
+              <table style={styles.previewTable}>
+                <thead>
+                  <tr>
+                    <th style={styles.tableHeader}>Name</th>
+                    <th style={styles.tableHeader}>Email</th>
+                    <th style={styles.tableHeader}>Basic</th>
+                    <th style={styles.tableHeader}>Net Salary</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {validData.map((emp, index) => {
+                    const netSalary = (Number(emp.basic || 0) + Number(emp.hra || 0) + Number(emp.da || 0) + 
+                                      Number(emp.conveyance || 0) + Number(emp.medical || 0) + Number(emp.bonus || 0) -
+                                      Number(emp.pf || 0) - Number(emp.professionalTax || 0) - Number(emp.incomeTax || 0));
+                    
+                    return (
+                      <tr key={index}>
+                        <td style={styles.tableCell}>{emp.employeeName || emp.Name}</td>
+                        <td style={styles.tableCell}>{emp.employeeEmail || emp.Email || emp.email}</td>
+                        <td style={styles.tableCell}>₹{Number(emp.basic || emp.Basic || 0).toLocaleString()}</td>
+                        <td style={styles.tableCell}>₹{netSalary.toLocaleString()}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
             <div style={styles.actionButtons}>
               <button
-                onClick={() => setPreview(false)}
+                onClick={() => {
+                  setPreview(false);
+                  setExcelData([]);
+                  setValidData([]);
+                  setValidationErrors([]);
+                  document.getElementById('file-upload').value = '';
+                }}
                 style={styles.cancelButton}
                 disabled={saving}
               >
@@ -177,9 +324,9 @@ function SalaryUpload() {
               <button
                 onClick={handleSaveData}
                 style={styles.saveButton}
-                disabled={saving}
+                disabled={saving || validData.length === 0}
               >
-                {saving ? 'Saving...' : '💾 Save to Database Only'}
+                {saving ? 'Saving...' : `💾 Save ${validData.length} Valid Records`}
               </button>
             </div>
           </div>
@@ -203,35 +350,46 @@ const styles = {
     color: "white",
     height: "100vh",
     display: "flex",
-    flexDirection: "column",
-    padding: "20px"
+    flexDirection: "column"
+  },
+  sidebarHeader: {
+    padding: "24px 20px",
+    borderBottom: "1px solid #1f2937"
   },
   logo: {
     fontSize: "20px",
     fontWeight: "600",
-    marginBottom: "30px"
-  },
-  menu: {
-    flex: 1
-  },
-  menuItem: {
-    padding: "10px",
-    marginBottom: "5px",
-    borderRadius: "6px",
-    cursor: "pointer",
-    color: "#9ca3af"
-  },
-  activeMenuItem: {
-    backgroundColor: "#374151",
+    margin: 0,
     color: "white"
   },
-  logout: {
-    padding: "10px",
+  sidebarMenu: {
+    flex: 1,
+    padding: "20px",
+    overflowY: "auto"
+  },
+  menuItem: {
+    padding: "12px 16px",
+    marginBottom: "4px",
+    borderRadius: "8px",
+    cursor: "pointer",
+    color: "#9ca3af",
+    fontSize: "14px",
+    fontWeight: "500"
+  },
+  activeMenuItem: {
+    backgroundColor: "#1f2937",
+    color: "white"
+  },
+  logoutButton: {
+    margin: "20px",
+    padding: "12px",
     backgroundColor: "#dc2626",
     color: "white",
     border: "none",
-    borderRadius: "6px",
-    cursor: "pointer"
+    borderRadius: "8px",
+    cursor: "pointer",
+    fontSize: "14px",
+    fontWeight: "500"
   },
   content: {
     flex: 1,
@@ -299,10 +457,62 @@ const styles = {
     fontSize: "14px",
     flex: 1
   },
+  errorSection: {
+    backgroundColor: "#fee2e2",
+    padding: "20px",
+    borderRadius: "8px",
+    marginBottom: "20px",
+    border: "1px solid #ef4444"
+  },
+  errorTitle: {
+    fontSize: "16px",
+    fontWeight: "600",
+    margin: "0 0 8px 0",
+    color: "#b91c1c"
+  },
+  errorNote: {
+    fontSize: "14px",
+    color: "#b91c1c",
+    margin: "0 0 10px 0"
+  },
+  errorList: {
+    margin: 0,
+    paddingLeft: "20px"
+  },
+  errorItem: {
+    fontSize: "13px",
+    color: "#b91c1c",
+    marginBottom: "4px"
+  },
   previewSection: {
     backgroundColor: "white",
     padding: "20px",
     borderRadius: "8px"
+  },
+  successNote: {
+    fontSize: "14px",
+    color: "#059669",
+    margin: "0 0 15px 0"
+  },
+  tableContainer: {
+    overflow: "auto",
+    maxHeight: "300px",
+    marginBottom: "20px"
+  },
+  previewTable: {
+    width: "100%",
+    borderCollapse: "collapse",
+    fontSize: "13px"
+  },
+  tableHeader: {
+    textAlign: "left",
+    padding: "10px",
+    backgroundColor: "#f3f4f6",
+    fontWeight: "600"
+  },
+  tableCell: {
+    padding: "8px 10px",
+    borderBottom: "1px solid #e5e7eb"
   },
   actionButtons: {
     display: "flex",
